@@ -1,6 +1,9 @@
-# Pour lancer correctement cette application, utilisez :
-#   streamlit run app.py
+# Pour lancer correctement cette application sur Streamlit Cloud, nommez le fichier app.py
 import streamlit as st
+
+# Config must occur before any other Streamlit calls
+st.set_page_config(page_title="Analyse des Spreads Obligataires", layout="wide")
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -20,16 +23,16 @@ def load_data():
     return df
 
 # Sidebar: bouton de rechargement
-st.sidebar.title("Contrôles")
-if st.sidebar.button("🔄 Recharger les données"):
-    load_data.clear()
-    st.experimental_rerun()
+def sidebar_controls():
+    st.sidebar.title("Contrôles")
+    if st.sidebar.button("🔄 Recharger les données"):
+        load_data.clear()
+        st.experimental_rerun()
+
+sidebar_controls()
 
 # Charger les données
 df = load_data()
-
-# Configuration de la page
-st.set_page_config(page_title="Analyse des Spreads Obligataires", layout="wide")
 
 # Page d'accueil stylée
 st.markdown(
@@ -87,7 +90,6 @@ with tab_graphs:
 
     # Graphique 3D interactif : spread par rating et échéance, coloré par secteur
     st.subheader("Spread moyen par Rating et Échéance (3D)")
-    # Préparation des données pour 3D
     df_3d = df_filt.groupby(['secteur','rating','fourchette_annee'], as_index=False)['spread'].mean()
     df_3d['bucket_code'] = df_3d['fourchette_annee'].astype('category').cat.codes
 
