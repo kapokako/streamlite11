@@ -20,8 +20,7 @@ def load_data():
     df['fourchette_annee'] = df['fourchette_annee'].astype(str)
     return df
 
-# Sidebar: bouton de rechargement
-def sidebar_controls():
+# (Optionnel) Sur Streamlit Cloud, un rerun manuel suffit pour recharger les données si modifiées:
     st.sidebar.title("Contrôles")
     if st.sidebar.button("🔄 Recharger les données"):
         load_data.clear()
