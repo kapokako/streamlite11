@@ -1,12 +1,10 @@
-# Pour lancer correctement cette application sur Streamlit Cloud, nommez le fichier app.py
 import streamlit as st
-
-# Config must occur before any other Streamlit calls
-st.set_page_config(page_title="Analyse des Spreads Obligataires", layout="wide")
-
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+
+# Config must occur before any other Streamlit calls
+st.set_page_config(page_title="Analyse des Spreads Obligataires", layout="wide")
 
 # Chargement des données (cache pour performance)
 @st.cache_data
@@ -131,7 +129,7 @@ with tab_search:
 
     df_sel = df[(df['secteur']==secteur_sel)&(df['fourchette_annee']==echeance_sel)&(df['rating']==rating_sel)]
     if not df_sel.empty:
-        st.metric(label="Spread Moyen Estimé", value=f"{df_sel['spread'].mean():.2f}")
+        st.metric(label="Spread Moyen Estimé", value=f"{df_sel['spread'].mean()}: .2f")
     else:
         st.warning("Aucune donnée exacte. Voici les plus proches :")
         temp = df[(df['secteur']==secteur_sel)&(df['fourchette_annee']==echeance_sel)].assign(diff=abs(df['rating']-rating_sel))
