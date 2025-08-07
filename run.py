@@ -3,24 +3,32 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+# Mapping numérique ↔ alphabétique pour les ratings
+dict_num_to_alpha = {
+    21: 'AAA', 20: 'AA+', 19: 'AA', 18: 'AA-', 17: 'A+', 16: 'A', 15: 'A-',
+    14: 'BBB+', 13: 'BBB', 12: 'BBB-', 11: 'BB+', 10: 'BB', 9: 'BB-',
+    8: 'B+', 7: 'B', 6: 'B-', 5: 'CCC+', 4: 'CCC', 3: 'CCC-', 2: 'CC', 1: 'SD'
+}
+# Inverse
+alpha_to_num = {v: k for k, v in dict_num_to_alpha.items()}
+
 # Configuration Streamlit
 st.set_page_config(page_title="Analyse des Spreads Obligataires", layout="wide")
 
 # Chargement des données avec cache
-@st.cache_data
-# Utilise st.cache_data pour memoire
-def load_data():
-    df = pd.read_excel(
-        'obligations.xlsx',
-        usecols='B:F',
-        names=['secteur','spread','emission_annee','fourchette_annee','rating']
-    )
-    df['rating'] = df['rating'].astype(int)
-    df['fourchette_annee'] = df['fourchette_annee'].astype(str)
-    return df
+df_excel = pd.read_excel(
+    'obligations.xlsx', usecols='B:F',
+    names=['secteur','spread','emission_annee','fourchette_annee','rating']
+)
+# Normalisation du rating en alphabétique
+# Si rating est numérique, convertir en alpha
+if df_excel['rating'].dtype.kind in 'iufc':
+    df_excel['rating'] = df_excel['rating'].astype(int).map(dict_num_to_alpha)
+# Maintenant rating est alphabétique
 
-# Charger données
-df = load_data()
+df = df_excel.copy()
+# Ajouter code numérique pour calculs
+df['rating_num'] = df['rating'].map(alpha_to_num)
 
 # Page d'accueil
 st.markdown(
@@ -34,75 +42,75 @@ st.markdown("---")
 # Préparer filtres globaux
 secteurs = df['secteur'].unique().tolist()
 echeances = df['fourchette_annee'].unique().tolist()
-rating_min, rating_max = int(df['rating'].min()), int(df['rating'].max())
+ratings_alpha = list(dict_num_to_alpha.values())  # ordonné selon dict insertion
 
 # Onglets
 tab_graphs, tab_tables, tab_search = st.tabs(["📈 Graphiques","📊 Tables","🔍 Recherche"])
 
 with tab_graphs:
     st.header("Visualisations Interactives")
-    c1,c2,c3 = st.columns(3)
-    filter_secteurs = c1.multiselect("Secteurs",secteurs,default=secteurs)
-    filter_echeances = c2.multiselect("Échéances",echeances,default=echeances)
-    filter_rating = c3.slider("Rating",rating_min,rating_max,(rating_min,rating_max),step=1)
+    c1, c2, c3 = st.columns(3)
+    filter_secteurs = c1.multiselect("Secteurs", options=secteurs, default=secteurs)
+    filter_echeances = c2.multiselect("Échéances", options=echeances, default=echeances)
+    filter_ratings = c3.multiselect("Rating", options=ratings_alpha, default=ratings_alpha)
 
     df_f = df[
-        df['secteur'].isin(filter_secteurs)&
-        df['fourchette_annee'].isin(filter_echeances)&
-        df['rating'].between(filter_rating[0],filter_rating[1])
+        df['secteur'].isin(filter_secteurs) &
+        df['fourchette_annee'].isin(filter_echeances) &
+        df['rating'].isin(filter_ratings)
     ]
 
     # Heatmap animée
-    fig1=px.density_heatmap(
-        df_f,x='fourchette_annee',y='rating',z='spread',histfunc='avg',animation_frame='secteur',
-        labels={'fourchette_annee':'Échéance','rating':'Rating','spread':'Spread moyen'},
+    fig1 = px.density_heatmap(
+        df_f, x='fourchette_annee', y='rating_num', z='spread', histfunc='avg',
+        animation_frame='secteur',
+        labels={'fourchette_annee':'Échéance', 'rating_num':'Rating', 'spread':'Spread moyen'},
+        category_orders={'rating_num': sorted(alpha_to_num.values(), reverse=True)},
         title='Heatmap des spreads moyens par secteur'
     )
-    fig1.update_layout(coloraxis_colorbar_title='Spread')
-    st.plotly_chart(fig1,use_container_width=True)
+    st.plotly_chart(fig1, use_container_width=True)
 
     # Bubble chart
-    grp=df_f.groupby(['secteur','fourchette_annee','rating'],as_index=False)['spread'].mean()
-    fig2=px.scatter(
-        grp,x='fourchette_annee',y='rating',size='spread',color='secteur',
-        labels={'fourchette_annee':'Échéance','rating':'Rating','spread':'Spread moyen'},
-        title='Bubble Chart : spread moyen',hover_data={'spread':':.2f'}
+    grp = df_f.groupby(['secteur','fourchette_annee','rating','rating_num'], as_index=False)['spread'].mean()
+    fig2 = px.scatter(
+        grp, x='fourchette_annee', y='rating_num', size='spread', color='secteur',
+        labels={'fourchette_annee':'Échéance','rating_num':'Rating','spread':'Spread moyen'},
+        hover_data={'rating':True,'spread':':.2f'}, title='Bubble Chart : spread moyen'
     )
-    st.plotly_chart(fig2,use_container_width=True)
+    st.plotly_chart(fig2, use_container_width=True)
 
-    # Scatter 3D
+    # 3D Scatter
     st.subheader('Spread moyen par Rating & Échéance (3D)')
-    df3=df_f.groupby(['secteur','rating','fourchette_annee'],as_index=False)['spread'].mean()
-    df3['bucket_code']=df3['fourchette_annee'].astype('category').cat.codes
-    fig3=px.scatter_3d(
-        df3,x='rating',y='bucket_code',z='spread',color='secteur',
-        labels={'rating':'Rating','bucket_code':'Échéance code','spread':'Spread moyen','secteur':'Secteur'},
-        title='3D Scatter : Spread moyen by Rating & Échéance',
-        hover_data={'fourchette_annee':True,'spread':':.2f'}
+    df3 = grp.copy()
+    df3['bucket_code'] = df3['fourchette_annee'].astype('category').cat.codes
+    fig3 = px.scatter_3d(
+        df3, x='rating_num', y='bucket_code', z='spread', color='secteur',
+        labels={'rating_num':'Rating','bucket_code':'Échéance code','spread':'Spread moyen'},
+        hover_data={'rating':True,'fourchette_annee':True,'spread':':.2f'},
+        title='3D Scatter : Spread moyen by Rating & Échéance'
     )
-    fig3.update_layout(legend_title_text='Secteur')
-    st.plotly_chart(fig3,use_container_width=True)
+    st.plotly_chart(fig3, use_container_width=True)
 
 with tab_tables:
     st.header("Statistiques & Matrices")
     st.subheader("Descriptives Spread")
-    st.write(df_f['spread'].describe())
+    st.write(df['spread'].describe())
     st.subheader("Pivot Rating×Échéance")
-    pivot=df_f.pivot_table(index='rating',columns='fourchette_annee',values='spread',aggfunc='mean').fillna(0)
+    pivot = df.pivot_table(index='rating', columns='fourchette_annee', values='spread', aggfunc='mean').fillna(0)
     st.dataframe(pivot)
 
 with tab_search:
     st.header("Recherche Spread")
-    sel_s=st.selectbox("Secteur",secteurs)
-    sel_e=st.selectbox("Échéance",echeances)
-    sel_r=st.slider("Rating",rating_min,rating_max,(rating_min+rating_max)//2,step=1)
-    sub=df[(df['secteur']==sel_s)&(df['fourchette_annee']==sel_e)&(df['rating']==sel_r)]
+    sel_s = st.selectbox("Secteur", secteurs)
+    sel_e = st.selectbox("Échéance", echeances)
+    sel_r = st.selectbox("Rating", ratings_alpha)
+    sub = df[(df['secteur']==sel_s)&(df['fourchette_annee']==sel_e)&(df['rating']==sel_r)]
     if not sub.empty:
-        st.metric("Spread moyen estimé",f"{sub['spread'].mean():.2f}")
+        st.metric("Spread moyen estimé", f"{sub['spread'].mean():.2f}")
     else:
         st.warning("Pas de donnée exacte, spreads proches:")
-        t=df[(df['secteur']==sel_s)&(df['fourchette_annee']==sel_e)].assign(diff=abs(df['rating']-sel_r))
-        vo=t.sort_values('diff').head(5).drop(columns='diff')
+        temp = df[(df['secteur']==sel_s)&(df['fourchette_annee']==sel_e)].assign(diff=abs(df['rating_num']-alpha_to_num[sel_r]))
+        vo = temp.sort_values('diff').head(5)
         st.table(vo[['rating','spread']])
 
 st.markdown("---")
