@@ -65,13 +65,34 @@ with tab_graphs:
     )
     st.plotly_chart(fig1, use_container_width=True)
 
-    # Bubble chart simplifié
+    # Bubble chart simplifié avec codes numériques pour l'échéance
     grp = filt.groupby(['secteur','fourchette_annee','rating_num'], as_index=False)['spread'].mean()
+    # Convertir fourchette_annee en code numérique
+    grp['bucket_code'] = grp['fourchette_annee'].astype('category').cat.codes
+    # Assurer que spread est float
+    grp['spread'] = grp['spread'].astype(float)
+    # Tracé
     fig2 = px.scatter(
         grp,
-        x='fourchette_annee', y='rating_num', size='spread', color='secteur',
-        labels={'fourchette_annee':'Échéance','rating_num':'Rating','spread':'Spread moyen'},
-        title='Bubble Chart : spread moyen'
+        x='bucket_code',
+        y='rating_num',
+        size='spread',
+        color='secteur',
+        labels={
+            'bucket_code':'Échéance (code)',
+            'rating_num':'Rating',
+            'spread':'Spread moyen'
+        },
+        title='Bubble Chart : spread moyen',
+        hover_data={'fourchette_annee':True, 'spread':':.2f'}
+    )
+    # Remettre les labels d'échéance
+    fig2.update_layout(
+        xaxis=dict(
+            tickmode='array',
+            tickvals=grp['bucket_code'],
+            ticktext=grp['fourchette_annee'].unique()
+        )
     )
     st.plotly_chart(fig2, use_container_width=True)
 
