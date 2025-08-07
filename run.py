@@ -15,21 +15,17 @@ alpha_to_num = {v: k for k, v in dict_num_to_alpha.items()}
 st.set_page_config(page_title="Analyse des Spreads Obligataires", layout="wide")
 
 # Chargement des données (colonnes B à E)
-df_excel = pd.read_excel(
-    'obligations.xlsx',
-    usecols='B:E',
-    names=['secteur', 'spread', 'fourchette_annee', 'rating']
+df = pd.read_excel(
+    'obligations.xlsx', usecols='B:E',
+    names=['secteur','spread','fourchette_annee','rating']
 )
-# Si rating numérique, convertir en alphabétique
-if df_excel['rating'].dtype.kind in 'iufc':
-    df_excel['rating'] = df_excel['rating'].astype(int).map(dict_num_to_alpha)
-
-# DataFrame principal
-df = df_excel.copy()
-# Code numérique pour axes
+# Conversion ratings numériques -> alphabétiques si nécessaire
+if df['rating'].dtype.kind in 'iufc':
+    df['rating'] = df['rating'].astype(int).map(dict_num_to_alpha)
+# Ajouter code numérique pour calculs
 df['rating_num'] = df['rating'].map(alpha_to_num)
 
-# Page d'accueil
+# Accueil
 st.markdown(
     "<div style='text-align:center;padding:20px;background:#f0f8ff;'>"
     "<h1 style='color:#2E86AB;'>Analyse des Spreads Obligataires</h1>"
@@ -59,24 +55,22 @@ with tab_graphs:
         df['rating'].isin(sel_ratings)
     ]
 
-    # Heatmap animée par secteur
+    # Heatmap animée
     fig1 = px.density_heatmap(
         filt,
         x='fourchette_annee', y='rating_num', z='spread', histfunc='avg',
         animation_frame='secteur',
         labels={'fourchette_annee':'Échéance','rating_num':'Rating','spread':'Spread moyen'},
-        category_orders={'rating_num': sorted(alpha_to_num.values(), reverse=True)},
         title='Heatmap des spreads moyens par secteur'
     )
     st.plotly_chart(fig1, use_container_width=True)
 
-    # Bubble chart
-    grp = filt.groupby(['secteur','fourchette_annee','rating','rating_num'], as_index=False)['spread'].mean()
+    # Bubble chart simplifié
+    grp = filt.groupby(['secteur','fourchette_annee','rating_num'], as_index=False)['spread'].mean()
     fig2 = px.scatter(
         grp,
         x='fourchette_annee', y='rating_num', size='spread', color='secteur',
         labels={'fourchette_annee':'Échéance','rating_num':'Rating','spread':'Spread moyen'},
-        hover_data={'rating':True,'spread':':.2f'},
         title='Bubble Chart : spread moyen'
     )
     st.plotly_chart(fig2, use_container_width=True)
@@ -89,7 +83,6 @@ with tab_graphs:
         df3,
         x='rating_num', y='bucket_code', z='spread', color='secteur',
         labels={'rating_num':'Rating','bucket_code':'Échéance code','spread':'Spread moyen'},
-        hover_data={'rating':True,'fourchette_annee':True,'spread':':.2f'},
         title='3D Scatter : Spread moyen by Rating & Échéance'
     )
     st.plotly_chart(fig3, use_container_width=True)
@@ -98,8 +91,11 @@ with tab_tables:
     st.header("Statistiques & Matrices")
     st.subheader("Descriptives Spread")
     st.write(df['spread'].describe())
+
     st.subheader("Pivot Rating×Échéance")
-    pivot = df.pivot_table(index='rating', columns='fourchette_annee', values='spread', aggfunc='mean').fillna(0)
+    pivot = df.pivot_table(
+        index='rating', columns='fourchette_annee', values='spread', aggfunc='mean'
+    ).fillna(0)
     st.dataframe(pivot)
 
 with tab_search:
@@ -107,12 +103,14 @@ with tab_search:
     sel_s = st.selectbox("Secteur", secteurs)
     sel_e = st.selectbox("Échéance", echeances)
     sel_r = st.selectbox("Rating", ratings_alpha)
-    sub = df[(df['secteur']==sel_s) & (df['fourchette_annee']==sel_e) & (df['rating']==sel_r)]
+    sub = df[(df['secteur']==sel_s)&(df['fourchette_annee']==sel_e)&(df['rating']==sel_r)]
     if not sub.empty:
         st.metric("Spread moyen estimé", f"{sub['spread'].mean():.2f}")
     else:
         st.warning("Pas de donnée exacte, spreads proches:")
-        temp = df[(df['secteur']==sel_s) & (df['fourchette_annee']==sel_e)].assign(diff=abs(df['rating_num'] - alpha_to_num[sel_r]))
+        temp = df[(df['secteur']==sel_s)&(df['fourchette_annee']==sel_e)].assign(
+            diff=abs(df['rating_num'] - alpha_to_num[sel_r])
+        )
         vo = temp.sort_values('diff').head(5)
         st.table(vo[['rating','spread']])
 
