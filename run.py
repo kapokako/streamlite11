@@ -35,12 +35,38 @@ with tab1:
     df_f = df[df['secteur'].isin(sel_s)&df['fourchette_annee'].isin(sel_e)&df['rating'].isin(sel_r)]
     fig1 = px.density_heatmap(df_f, x='fourchette_annee', y='rating_num', z='spread', histfunc='avg', animation_frame='secteur', labels={'fourchette_annee':'Échéance','rating_num':'Rating','spread':'Spread moyen'})
     st.plotly_chart(fig1, use_container_width=True)
-    grp = df_f.groupby(['secteur','fourchette_annee','rating_num'], as_index=False)['spread'].mean()
-    grp['bucket'] = grp['fourchette_annee'].astype('category').cat.codes
-    fig2 = px.scatter(grp, x='bucket', y='rating_num', size=grp['spread'].clip(0), color='secteur', labels={'bucket':'Échéance code','rating_num':'Rating'})
+        grp = df_f.groupby(['secteur','fourchette_annee','rating_num'], as_index=False)['spread'].mean()
+    # Bubble chart: axes explicites plutôt que code
+    fig2 = px.scatter(
+        grp,
+        x='fourchette_annee',
+        y='rating_num',
+        size=grp['spread'].clip(0),
+        color='secteur',
+        labels={
+            'fourchette_annee':'Échéance',
+            'rating_num':'Rating',
+            'spread':'Spread moyen'
+        },
+        title='Bubble Chart: Spread moyen par Échéance & Rating'
+    )
     st.plotly_chart(fig2, use_container_width=True)
-    fig3 = px.scatter_3d(grp, x='rating_num', y='bucket', z='spread', color='secteur', labels={'rating_num':'Rating','bucket':'Échéance code'})
-    st.plotly_chart(fig3, use_container_width=True)
+    # 3D Scatter: utilisation directe des catégories pour l'échéance
+    fig3 = px.scatter_3d(
+        grp,
+        x='rating_num',
+        y='fourchette_annee',
+        z='spread',
+        color='secteur',
+        labels={
+            'rating_num':'Rating',
+            'fourchette_annee':'Échéance',
+            'spread':'Spread moyen'
+        },
+        category_orders={'fourchette_annee': echeances},
+        title='3D Scatter: Spread moyen par Rating & Échéance'
+    )
+    st.plotly_chart(fig3, use_container_width=True), use_container_width=True)
 
 with tab2:
     st.write(df['spread'].describe())
