@@ -507,7 +507,6 @@ with tab4:
                     )
                     st.plotly_chart(fig_comp, use_container_width=True)
 
- labels={'x': yen (bps)', 'y': 'Secteur'},
             color=spread_by_sector['mean'],
             color_continuous_scale='RdYlBu_r'
         )
