@@ -25,7 +25,7 @@ secteurs = df['secteur'].unique().tolist()
 echeances = df['fourchette_annee'].unique().tolist()
 ratings = list(rating_map.values())
 
-tab1, tab2, tab3 = st.tabs(["📈 Graphiques","📊 Tables","🔍 Recherche"])
+tab1, tab2, tab3, tab4 = st.tabs(["📈 Graphiques","📊 Tables","🔍 Recherche","🎯 Synthèse"])
 
 with tab1:
     c1, c2, c3 = st.columns(3)
@@ -61,6 +61,22 @@ with tab3:
         st.write(f"{len(vo)} spreads trouvés")
         st.table(vo[['rating','spread']])
         st.bar_chart(vo.set_index('rating')['spread'])
+
+with tab4:
+    st.markdown("### Synthèse des spreads par secteur, rating & échéance")
+    grp_syn = df.groupby(['secteur','fourchette_annee','rating'], as_index=False)['spread'].mean()
+    fig_syn = px.line(
+        grp_syn,
+        x='fourchette_annee',
+        y='spread',
+        color='rating',
+        markers=True,
+        facet_col='secteur',
+        facet_col_wrap=3,
+        labels={'fourchette_annee':'Échéance','spread':'Spread moyen','rating':'Rating'},
+        title="Évolution des spreads par rating selon les secteurs et échéances"
+    )
+    st.plotly_chart(fig_syn, use_container_width=True)
 
 st.markdown("---")
 st.markdown("*App Streamlit - analyse des spreads obligataires.*")
