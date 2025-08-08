@@ -521,40 +521,7 @@ with tab4:
         fig_box_sector.update_layout(height=400)
         st.plotly_chart(fig_box_sector, use_container_width=True,key="tab2_fig_box_sector")
     
-    with col2:
-        st.subheader("⭐ Spreads par Rating")
-        
-        # Graphique en barres pour les ratings
-        # Trier par rating_num pour avoir un ordre logique
-        rating_data = spread_by_rating.copy()
-        rating_data['rating_num'] = rating_data.index.map(alpha_to_num)
-        rating_data = rating_data.sort_values('rating_num', ascending=False)
-        
-        fig_rating = px.bar(
-            x=rating_data.index,
-            y=rating_data['mean'],
-            title="Spread Moyen par Rating",
-            labels={'x': 'Rating', 'y': 'Spread Moyen (bps)'},
-            color=rating_data['mean'],
-            color_continuous_scale='RdYlBu_r'
-        )
-        fig_rating.update_layout(height=400, showlegend=False)
-        st.plotly_chart(fig_rating, use_container_width=True,key="tab2_fig_rating")
-        
-        # Graphique linéaire montrant la courbe de spread par rating
-        fig_curve = px.line(
-            x=rating_data['rating_num'],
-            y=rating_data['mean'],
-            title="Courbe des Spreads par Qualité de Crédit",
-            labels={'x': 'Rating (échelle numérique)', 'y': 'Spread Moyen (bps)'},
-            markers=True
-        )
-        fig_curve.update_layout(height=400)
-        st.plotly_chart(fig_curve, use_container_width=True,key="tab2_fig_curve")
-    
-    st.subheader("📅 Spreads par Échéance")
-    
-    col3, col4 = st.columns(2)
+   
     
     with col3:
         # Graphique des spreads par maturité
