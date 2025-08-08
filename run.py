@@ -109,7 +109,7 @@ with tab1:
             color_continuous_scale='viridis'
         )
         fig_maturity.update_layout(height=400, showlegend=False)
-        st.plotly_chart(fig_maturity, use_container_width=True
+        st.plotly_chart(fig_maturity, use_container_width=True)
 
 with tab2:
     st.markdown("## 📈 Graphiques Interactifs")
@@ -507,7 +507,8 @@ with tab4:
                     )
                     st.plotly_chart(fig_comp, use_container_width=True)
 
-yen (bps)', 'y': 'Secteur'},
+            labels={'x': 'Spread Moyen (bps)', 'y': 'Secteur'},
+
             color=spread_by_sector['mean'],
             color_continuous_scale='RdYlBu_r'
         )
