@@ -55,13 +55,13 @@ with tab1:
             color_continuous_scale='RdYlBu_r'
         )
         fig_sector.update_layout(height=400, showlegend=False)
-        st.plotly_chart(fig_sector, use_container_width=True)
+        st.plotly_chart(fig_sector, use_container_width=True, key="tab1_fig_sector")
         
         # Box plot pour la distribution par secteur
         fig_box_sector = px.box(df, x='secteur', y='spread', title="Distribution des Spreads par Secteur")
         fig_box_sector.update_xaxes(tickangle=45)
         fig_box_sector.update_layout(height=400)
-        st.plotly_chart(fig_box_sector, use_container_width=True)
+        st.plotly_chart(fig_box_sector, use_container_width=True, key="tab1_box_sector")
     
     with col2:
         st.subheader("⭐ Spreads par Rating")
@@ -81,7 +81,7 @@ with tab1:
             color_continuous_scale='RdYlBu_r'
         )
         fig_rating.update_layout(height=400, showlegend=False)
-        st.plotly_chart(fig_rating, use_container_width=True)
+        st.plotly_chart(fig_rating, use_container_width=True,key="tab1_fig_rating")
         
         # Graphique linéaire montrant la courbe de spread par rating
         fig_curve = px.line(
@@ -92,7 +92,7 @@ with tab1:
             markers=True
         )
         fig_curve.update_layout(height=400)
-        st.plotly_chart(fig_curve, use_container_width=True)
+        st.plotly_chart(fig_curve, use_container_width=True,key="tab1_fig_curve")
     
     st.subheader("📅 Spreads par Échéance")
     
@@ -109,7 +109,7 @@ with tab1:
             color_continuous_scale='viridis'
         )
         fig_maturity.update_layout(height=400, showlegend=False)
-        st.plotly_chart(fig_maturity, use_container_width=True)
+        st.plotly_chart(fig_maturity, use_container_width=True,key="tab1_fig_maturity")
 
 with tab2:
     st.markdown("## 📈 Graphiques Interactifs")
@@ -165,7 +165,7 @@ with tab2:
                 color_continuous_scale='RdYlBu_r'
             )
             fig1.update_layout(height=450)
-            st.plotly_chart(fig1, use_container_width=True)
+            st.plotly_chart(fig1, use_container_width=True,key="tab1_fig1")
         
         with col_g2:
             st.markdown("### 📊 Histogramme des Spreads")
@@ -178,7 +178,7 @@ with tab2:
                 marginal="rug"
             )
             fig_hist.update_layout(height=450)
-            st.plotly_chart(fig_hist, use_container_width=True)
+            st.plotly_chart(fig_hist, use_container_width=True,key="tab1_fig_hist")
         
         st.markdown("### 🎯 Graphiques de Corrélation")
         col_g3, col_g4 = st.columns(2)
@@ -199,7 +199,7 @@ with tab2:
                 labels={'bucket':'Code Échéance','rating_num':'Rating (numérique)', 'spread': 'Spread (bps)'}
             )
             fig2.update_layout(height=400)
-            st.plotly_chart(fig2, use_container_width=True)
+            st.plotly_chart(fig2, use_container_width=True,key="tab1_fig2")
         
         with col_g4:
             # Sunburst chart
@@ -211,7 +211,7 @@ with tab2:
                     title="Répartition Hiérarchique des Spreads"
                 )
                 fig_sun.update_layout(height=400)
-                st.plotly_chart(fig_sun, use_container_width=True)
+                st.plotly_chart(fig_sun, use_container_width=True,key="tab1_fig_sun")
         
         st.markdown("### 🌐 Vue 3D Interactive")
         grp = df_f.groupby(['secteur','fourchette_annee','rating_num'], as_index=False)['spread'].mean()
@@ -228,7 +228,7 @@ with tab2:
             labels={'rating_num':'Rating','bucket':'Échéance','spread':'Spread (bps)'}
         )
         fig3.update_layout(height=600)
-        st.plotly_chart(fig3, use_container_width=True)
+        st.plotly_chart(fig3, use_container_width=True,key="tab1_fig3")
     
     else:
         st.warning("⚠️ Aucune donnée ne correspond aux filtres sélectionnés")
@@ -366,7 +366,7 @@ with tab4:
             
             if len(sub) > 1:
                 fig_detail = px.histogram(sub, x='spread', title=f"Distribution - {ss} | {se} | {sr}")
-                st.plotly_chart(fig_detail, use_container_width=True)
+                st.plotly_chart(fig_detail, use_container_width=True,key="tab1_fig_detail")
         else:
             st.warning("❌ Aucune donnée exacte trouvée")
             st.markdown("**Suggestions alternatives :**")
@@ -382,7 +382,7 @@ with tab4:
                 
                 fig_alt = px.bar(closest, x='rating', y='spread', 
                                title=f"Spreads alternatifs - {ss} | {se}")
-                st.plotly_chart(fig_alt, use_container_width=True)
+                st.plotly_chart(fig_alt, use_container_width=True,key="tab1_fig_alt")
     
     elif search_mode == "🔍 Recherche Approximative":
         st.markdown("### Recherche par fourchettes")
@@ -421,13 +421,13 @@ with tab4:
                 fig_sector_approx = px.box(approx_results, x='secteur', y='spread', 
                                          title="Distribution par secteur")
                 fig_sector_approx.update_xaxes(tickangle=45)
-                st.plotly_chart(fig_sector_approx, use_container_width=True)
+                st.plotly_chart(fig_sector_approx, use_container_width=True,key="tab1_fig_sector_approx")
             
             with col_g2:
                 fig_rating_approx = px.box(approx_results, x='rating', y='spread', 
                                          title="Distribution par rating")
                 fig_rating_approx.update_xaxes(tickangle=45)
-                st.plotly_chart(fig_rating_approx, use_container_width=True)
+                st.plotly_chart(fig_rating_approx, use_container_width=True,key="tab1_fig_rating_approx")
             
             # Table des résultats
             st.dataframe(approx_results.sample(min(20, len(approx_results))), use_container_width=True)
@@ -505,7 +505,7 @@ with tab4:
                         title="Comparaison des Spreads Moyens",
                         color='Profil'
                     )
-                    st.plotly_chart(fig_comp, use_container_width=True)
+                    st.plotly_chart(fig_comp, use_container_width=True,key="tab2_fig_comp")
 
             labels={'x': 'Spread Moyen (bps)', 'y': 'Secteur'},
 
@@ -513,13 +513,13 @@ with tab4:
             color_continuous_scale='RdYlBu_r'
         
         fig_sector.update_layout(height=400, showlegend=False)
-        st.plotly_chart(fig_sector, use_container_width=True)
+        st.plotly_chart(fig_sector, use_container_width=True,key="tab1_fig_sector")
         
         # Box plot pour la distribution par secteur
         fig_box_sector = px.box(df, x='secteur', y='spread', title="Distribution des Spreads par Secteur")
         fig_box_sector.update_xaxes(tickangle=45)
         fig_box_sector.update_layout(height=400)
-        st.plotly_chart(fig_box_sector, use_container_width=True)
+        st.plotly_chart(fig_box_sector, use_container_width=True,key="tab2_fig_box_sector")
     
     with col2:
         st.subheader("⭐ Spreads par Rating")
@@ -539,7 +539,7 @@ with tab4:
             color_continuous_scale='RdYlBu_r'
         )
         fig_rating.update_layout(height=400, showlegend=False)
-        st.plotly_chart(fig_rating, use_container_width=True)
+        st.plotly_chart(fig_rating, use_container_width=True,key="tab2_fig_rating")
         
         # Graphique linéaire montrant la courbe de spread par rating
         fig_curve = px.line(
@@ -550,7 +550,7 @@ with tab4:
             markers=True
         )
         fig_curve.update_layout(height=400)
-        st.plotly_chart(fig_curve, use_container_width=True)
+        st.plotly_chart(fig_curve, use_container_width=True,key="tab2_fig_curve")
     
     st.subheader("📅 Spreads par Échéance")
     
@@ -567,7 +567,7 @@ with tab4:
             color_continuous_scale='viridis'
         )
         fig_maturity.update_layout(height=400, showlegend=False)
-        st.plotly_chart(fig_maturity, use_container_width=True)
+        st.plotly_chart(fig_maturity, use_container_width=True,key="tab2_fig_maturity")
     
     with col4:
         # Violin plot pour montrer la distribution par échéance
@@ -575,7 +575,7 @@ with tab4:
                               title="Distribution des Spreads par Échéance",
                               box=True)
         fig_violin.update_layout(height=400)
-        st.plotly_chart(fig_violin, use_container_width=True)
+        st.plotly_chart(fig_violin, use_container_width=True,key="tab1_fig_violin")
     
     st.subheader("🎯 Analyse Multidimensionnelle")
     
@@ -601,7 +601,7 @@ with tab4:
         aspect='auto'
     )
     fig_heatmap.update_layout(height=500)
-    st.plotly_chart(fig_heatmap, use_container_width=True)
+    st.plotly_chart(fig_heatmap, use_container_width=True,key="tab3_fig_heatmap")
     
     # Graphique radar par secteur
     st.subheader("🕸️ Profil Radar des Secteurs")
