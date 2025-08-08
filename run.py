@@ -523,18 +523,7 @@ with tab4:
     
    
     
-    with col3:
-        # Graphique des spreads par maturité
-        fig_maturity = px.bar(
-            x=spread_by_maturity.index,
-            y=spread_by_maturity['mean'],
-            title="Spread Moyen par Échéance",
-            labels={'x': 'Échéance', 'y': 'Spread Moyen (bps)'},
-            color=spread_by_maturity['mean'],
-            color_continuous_scale='viridis'
-        )
-        fig_maturity.update_layout(height=400, showlegend=False)
-        st.plotly_chart(fig_maturity, use_container_width=True,key="tab2_fig_maturity")
+  
     
     with col4:
         # Violin plot pour montrer la distribution par échéance
