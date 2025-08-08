@@ -511,7 +511,7 @@ with tab4:
 
             color=spread_by_sector['mean'],
             color_continuous_scale='RdYlBu_r'
-        )
+        
         fig_sector.update_layout(height=400, showlegend=False)
         st.plotly_chart(fig_sector, use_container_width=True)
         
