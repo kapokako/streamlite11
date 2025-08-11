@@ -4,707 +4,747 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
+import io
+
+# Configuration de la page
+st.set_page_config(
+    page_title="Bond Spread Analytics Pro", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 # Mapping numérique ↔ alphabétique
 rating_map = {21:'AAA',20:'AA+',19:'AA',18:'AA-',17:'A+',16:'A',15:'A-',14:'BBB+',13:'BBB',12:'BBB-',11:'BB+',10:'BB',9:'BB-',8:'B+',7:'B',6:'B-',5:'CCC+',4:'CCC',3:'CCC-',2:'CC',1:'SD'}
 alpha_to_num = {v:k for k,v in rating_map.items()}
 
-st.set_page_config(page_title="Analyse des Spreads Obligataires", layout="wide")
+# Styles CSS pour un look professionnel
+st.markdown("""
+<style>
+    .main-header {
+        background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%);
+        padding: 2rem;
+        border-radius: 10px;
+        color: white;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    .metric-card {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        border-left: 4px solid #2a5298;
+        margin: 0.5rem 0;
+    }
+    .sidebar .sidebar-content {
+        background: linear-gradient(180deg, #f8f9fa 0%, #e9ecef 100%);
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        background-color: #f1f3f4;
+        border-radius: 8px;
+        padding: 0 24px;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #2a5298;
+        color: white;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 @st.cache_data
-def load_data():
-    df = pd.read_excel('obligations.xlsx', usecols='B:E', names=['secteur','spread','fourchette_annee','rating'])
-    
-    # Nettoyer les données - supprimer les lignes avec des valeurs manquantes
-    df = df.dropna()
-    
-    # Convertir les ratings numériques en alphabétiques si nécessaire
-    if df['rating'].dtype.kind in 'iufc':
-        df['rating'] = df['rating'].map(rating_map)
-    
-    # Supprimer les lignes où le rating n'est pas mappé
-    df = df[df['rating'].notna()]
-    df = df[df['rating'].isin(alpha_to_num.keys())]
-    
-    # Ajouter la colonne rating_num
-    df['rating_num'] = df['rating'].map(alpha_to_num)
-    
-    return df
+def load_data(file_path='obligations.xlsx'):
+    """Charge les données depuis le fichier Excel"""
+    try:
+        df = pd.read_excel(file_path, usecols='A:E', names=['nom_obligation','secteur','spread','fourchette_annee','rating'])
+        df = df.dropna()
+        
+        # Convertir les ratings numériques en alphabétiques si nécessaire
+        if df['rating'].dtype.kind in 'iufc':
+            df['rating'] = df['rating'].map(rating_map)
+        
+        # Nettoyer et valider les données
+        df = df[df['rating'].notna()]
+        df = df[df['rating'].isin(alpha_to_num.keys())]
+        df['rating_num'] = df['rating'].map(alpha_to_num)
+        
+        return df
+    except Exception as e:
+        st.error(f"Erreur lors du chargement des données : {str(e)}")
+        return pd.DataFrame()
 
-df = load_data()
+def update_data(existing_df, new_df):
+    """Met à jour les données existantes avec les nouvelles"""
+    if existing_df.empty:
+        return new_df
+    
+    # Identifier les obligations communes par nom
+    common_bonds = new_df[new_df['nom_obligation'].isin(existing_df['nom_obligation'])]['nom_obligation']
+    new_bonds = new_df[~new_df['nom_obligation'].isin(existing_df['nom_obligation'])]
+    
+    # Mettre à jour les obligations existantes
+    updated_df = existing_df.copy()
+    for bond_name in common_bonds:
+        mask = updated_df['nom_obligation'] == bond_name
+        new_data = new_df[new_df['nom_obligation'] == bond_name].iloc[0]
+        updated_df.loc[mask, ['secteur', 'spread', 'fourchette_annee', 'rating', 'rating_num']] = [
+            new_data['secteur'], new_data['spread'], new_data['fourchette_annee'], 
+            new_data['rating'], new_data['rating_num']
+        ]
+    
+    # Ajouter les nouvelles obligations
+    final_df = pd.concat([updated_df, new_bonds], ignore_index=True)
+    
+    return final_df
 
-st.markdown("<div style='text-align:center;padding:20px;background:#f0f8ff;'><h1 style='color:#2E86AB;'>Analyse des Spreads Obligataires</h1><p style='font-size:18px;'>Explorez, filtrez et estimez les spreads par secteur, échéance & rating</p></div>", unsafe_allow_html=True)
-st.markdown("---")
+# Chargement initial des données
+if 'df_main' not in st.session_state:
+    st.session_state.df_main = load_data()
 
-secteurs = df['secteur'].unique().tolist()
-echeances = df['fourchette_annee'].unique().tolist()
-ratings = list(rating_map.values())
+df = st.session_state.df_main
 
-# Filtrer les ratings pour ne garder que ceux présents dans les données
-ratings_available = [r for r in ratings if r in df['rating'].unique()]
+# Header principal
+st.markdown("""
+<div class="main-header">
+    <h1>🏦 Bond Spread Analytics Pro</h1>
+    <p style="font-size: 18px; margin-top: 1rem;">Analyse professionnelle des spreads obligataires avec visualisation avancée</p>
+</div>
+""", unsafe_allow_html=True)
 
-tab1, tab2, tab3, tab4 = st.tabs(["📋 Analyse Détaillée", "📈 Graphiques Interactifs", "📊 Tables & Données", "🔍 Recherche Avancée"])
+# Sidebar pour l'import et les contrôles
+with st.sidebar:
+    st.header("📊 Contrôles & Import")
+    
+    # Section import de données
+    st.subheader("📥 Import de Données")
+    uploaded_file = st.file_uploader(
+        "Charger un fichier Excel",
+        type=['xlsx', 'xls'],
+        help="Le fichier doit contenir les colonnes : Nom, Secteur, Spread, Échéance, Rating"
+    )
+    
+    if uploaded_file is not None:
+        try:
+            new_df = pd.read_excel(uploaded_file, usecols='A:E', names=['nom_obligation','secteur','spread','fourchette_annee','rating'])
+            new_df = new_df.dropna()
+            
+            if new_df['rating'].dtype.kind in 'iufc':
+                new_df['rating'] = new_df['rating'].map(rating_map)
+            
+            new_df = new_df[new_df['rating'].notna()]
+            new_df = new_df[new_df['rating'].isin(alpha_to_num.keys())]
+            new_df['rating_num'] = new_df['rating'].map(alpha_to_num)
+            
+            if st.button("🔄 Mettre à jour les données"):
+                st.session_state.df_main = update_data(st.session_state.df_main, new_df)
+                df = st.session_state.df_main
+                st.success(f"✅ Données mises à jour ! {len(new_df)} obligations traitées")
+                st.rerun()
+                
+        except Exception as e:
+            st.error(f"Erreur lors du traitement du fichier : {str(e)}")
+    
+    # Statistiques globales dans la sidebar
+    if not df.empty:
+        st.subheader("📈 Vue d'ensemble")
+        st.metric("Nombre d'obligations", f"{len(df):,}")
+        st.metric("Spread moyen", f"{df['spread'].mean():.0f} bps")
+        st.metric("Nombre de secteurs", f"{df['secteur'].nunique()}")
+        st.metric("Plage de ratings", f"{df['rating'].nunique()} ratings")
+
+# Vérification des données
+if df.empty:
+    st.error("⚠️ Aucune donnée disponible. Veuillez vérifier le fichier obligations.xlsx")
+    st.stop()
+
+# Préparation des listes pour les filtres
+secteurs = sorted(df['secteur'].unique().tolist())
+echeances = sorted(df['fourchette_annee'].unique().tolist())
+ratings_available = sorted([r for r in rating_map.values() if r in df['rating'].unique()], 
+                          key=lambda x: alpha_to_num[x], reverse=True)
+
+# Tabs principales
+tab1, tab2, tab3, tab4 = st.tabs(["🎯 Analyse par Secteur", "📊 Dashboard Global", "🔍 Recherche Détaillée", "📋 Base de Données"])
 
 with tab1:
-    st.markdown("## 📋 Analyse Détaillée des Spreads")
-    st.markdown("*Cette page présente une analyse complète des spreads par secteur, rating et échéance*")
+    st.header("🎯 Analyse Sectorielle Approfondie")
     
-    # Calcul des moyennes par dimension
-    spread_by_sector = df.groupby('secteur')['spread'].agg(['mean', 'std', 'count']).round(2)
-    spread_by_rating = df.groupby('rating')['spread'].agg(['mean', 'std', 'count']).round(2)
-    spread_by_maturity = df.groupby('fourchette_annee')['spread'].agg(['mean', 'std', 'count']).round(2)
-    
-    col1, col2 = st.columns(2)
-    
+    # Sélection du secteur
+    col1, col2 = st.columns([2, 1])
     with col1:
-        st.subheader("🏭 Spreads par Secteur")
-        
-        # Graphique en barres horizontal pour les secteurs
-        fig_sector = px.bar(
-            x=spread_by_sector['mean'], 
-            y=spread_by_sector.index,
-            orientation='h',
-            title="Spread Moyen par Secteur",
-            labels={'x': 'Spread Moyen (bps)', 'y': 'Secteur'},
-            color=spread_by_sector['mean'],
-            color_continuous_scale='RdYlBu_r'
-        )
-        fig_sector.update_layout(height=400, showlegend=False)
-        st.plotly_chart(fig_sector, use_container_width=True, key="tab1_fig_sector")
-        
-        # Box plot pour la distribution par secteur
-        fig_box_sector = px.box(df, x='secteur', y='spread', title="Distribution des Spreads par Secteur")
-        fig_box_sector.update_xaxes(tickangle=45)
-        fig_box_sector.update_layout(height=400)
-        st.plotly_chart(fig_box_sector, use_container_width=True, key="tab1_box_sector")
-    
+        selected_sector = st.selectbox("🏭 Choisissez un secteur à analyser", secteurs, key="sector_analysis")
     with col2:
-        st.subheader("⭐ Spreads par Rating")
+        show_comparison = st.checkbox("📊 Comparer avec la moyenne du marché", value=True)
+    
+    sector_data = df[df['secteur'] == selected_sector].copy()
+    
+    if not sector_data.empty:
+        # Métriques du secteur
+        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
         
-        # Graphique en barres pour les ratings
-        rating_data = spread_by_rating.copy()
-        rating_data['rating_num'] = rating_data.index.map(alpha_to_num)
-        rating_data = rating_data.sort_values('rating_num', ascending=False)
+        sector_mean = sector_data['spread'].mean()
+        market_mean = df['spread'].mean()
+        sector_count = len(sector_data)
+        sector_std = sector_data['spread'].std()
         
-        fig_rating = px.bar(
-            x=rating_data.index,
-            y=rating_data['mean'],
-            title="Spread Moyen par Rating",
-            labels={'x': 'Rating', 'y': 'Spread Moyen (bps)'},
-            color=rating_data['mean'],
-            color_continuous_scale='RdYlBu_r'
-        )
-        fig_rating.update_layout(height=400, showlegend=False)
-        st.plotly_chart(fig_rating, use_container_width=True, key="tab1_fig_rating")
+        with col_m1:
+            delta = f"{sector_mean - market_mean:+.0f} vs marché" if show_comparison else None
+            st.metric("🎯 Spread Moyen Secteur", f"{sector_mean:.0f} bps", delta=delta)
         
-        # Graphique linéaire montrant la courbe de spread par rating
-        fig_curve = px.line(
-            x=rating_data['rating_num'],
-            y=rating_data['mean'],
-            title="Courbe des Spreads par Qualité de Crédit",
-            labels={'x': 'Rating (échelle numérique)', 'y': 'Spread Moyen (bps)'},
-            markers=True
-        )
-        fig_curve.update_layout(height=400)
-        st.plotly_chart(fig_curve, use_container_width=True, key="tab1_fig_curve")
-    
-    st.subheader("📅 Spreads par Échéance")
-    
-    col3, col4 = st.columns(2)
-    
-    with col3:
-        # Graphique des spreads par maturité
-        fig_maturity = px.bar(
-            x=spread_by_maturity.index,
-            y=spread_by_maturity['mean'],
-            title="Spread Moyen par Échéance",
-            labels={'x': 'Échéance', 'y': 'Spread Moyen (bps)'},
-            color=spread_by_maturity['mean'],
-            color_continuous_scale='viridis'
-        )
-        fig_maturity.update_layout(height=400, showlegend=False)
-        st.plotly_chart(fig_maturity, use_container_width=True, key="tab1_fig_maturity")
-    
-    with col4:
-        # Violin plot pour montrer la distribution par échéance
-        fig_violin = px.violin(df, x='fourchette_annee', y='spread', 
-                              title="Distribution des Spreads par Échéance",
-                              box=True)
-        fig_violin.update_layout(height=400)
-        st.plotly_chart(fig_violin, use_container_width=True, key="tab1_fig_violin")
-    
-    st.subheader("🎯 Analyse Multidimensionnelle")
-    
-    # Heatmap croisée Rating vs Échéance - VERSION CORRIGÉE
-    pivot_heatmap = df.pivot_table(
-        index='rating', 
-        columns='fourchette_annee', 
-        values='spread', 
-        aggfunc='mean'
-    )
-    
-    # CORRECTION : Filtrer et trier les ratings de manière sécurisée
-    def safe_sort_ratings(rating_list):
-        """Trie les ratings de manière sécurisée en gérant les valeurs manquantes"""
-        valid_ratings = []
-        invalid_ratings = []
+        with col_m2:
+            st.metric("📊 Nombre d'Obligations", f"{sector_count}")
         
-        for rating in rating_list:
-            if pd.isna(rating) or rating not in alpha_to_num:
-                invalid_ratings.append(rating)
-            else:
-                valid_ratings.append(rating)
+        with col_m3:
+            st.metric("📏 Volatilité (σ)", f"{sector_std:.0f} bps")
         
-        # Trier les ratings valides
-        valid_ratings_sorted = sorted(valid_ratings, key=lambda x: alpha_to_num[x], reverse=True)
+        with col_m4:
+            percentile_rank = (df['spread'].rank(pct=True) * 100)[df['secteur'] == selected_sector].mean()
+            st.metric("📈 Rang Percentile", f"{percentile_rank:.0f}%")
         
-        # Ajouter les ratings invalides à la fin (si il y en a)
-        return valid_ratings_sorted + invalid_ratings
-    
-    rating_order = safe_sort_ratings(pivot_heatmap.index.tolist())
-    pivot_heatmap = pivot_heatmap.reindex(rating_order)
-    
-    # Supprimer les lignes avec uniquement des NaN
-    pivot_heatmap = pivot_heatmap.dropna(how='all')
-    
-    if not pivot_heatmap.empty:
-        fig_heatmap = px.imshow(
-            pivot_heatmap.values,
-            x=pivot_heatmap.columns,
-            y=pivot_heatmap.index,
-            title="Heatmap des Spreads : Rating vs Échéance",
-            labels={'x': 'Échéance', 'y': 'Rating', 'color': 'Spread Moyen (bps)'},
-            color_continuous_scale='RdYlBu_r',
-            aspect='auto'
-        )
-        fig_heatmap.update_layout(height=500)
-        st.plotly_chart(fig_heatmap, use_container_width=True, key="tab1_fig_heatmap")
-    else:
-        st.warning("Impossible d'afficher la heatmap : données insuffisantes")
-    
-    # Graphique radar par secteur - VERSION CORRIGÉE
-    st.subheader("🕸️ Profil Radar des Secteurs")
-    
-    # Calculer les moyennes par secteur et rating
-    sector_rating = df.groupby(['secteur', 'rating'])['spread'].mean().unstack(fill_value=0)
-    
-    # Sélectionner quelques ratings clés pour le radar (seulement ceux présents)
-    key_ratings = ['AAA', 'AA', 'A', 'BBB', 'BB', 'B']
-    available_ratings = [r for r in key_ratings if r in sector_rating.columns]
-    
-    if available_ratings and len(sector_rating.index) > 0:
-        fig_radar = go.Figure()
+        # Graphiques sectoriels
+        col_g1, col_g2 = st.columns(2)
         
-        for sector in sector_rating.index[:5]:  # Limiter à 5 secteurs pour la lisibilité
-            values = sector_rating.loc[sector, available_ratings].tolist()
-            if any(v > 0 for v in values):  # Seulement si il y a des données
-                fig_radar.add_trace(go.Scatterpolar(
-                    r=values,
-                    theta=available_ratings,
-                    fill='toself',
-                    name=sector
+        with col_g1:
+            # Graphique par rating avec comparaison
+            sector_rating_stats = sector_data.groupby('rating')['spread'].agg(['mean', 'count']).reset_index()
+            
+            if show_comparison:
+                market_rating_stats = df.groupby('rating')['spread'].mean().reset_index()
+                market_rating_stats.columns = ['rating', 'market_mean']
+                sector_rating_stats = sector_rating_stats.merge(market_rating_stats, on='rating', how='left')
+                
+                fig_rating = go.Figure()
+                fig_rating.add_trace(go.Bar(
+                    name=f'{selected_sector}',
+                    x=sector_rating_stats['rating'],
+                    y=sector_rating_stats['mean'],
+                    marker_color='#2a5298'
                 ))
+                fig_rating.add_trace(go.Bar(
+                    name='Marché',
+                    x=sector_rating_stats['rating'],
+                    y=sector_rating_stats['market_mean'],
+                    marker_color='#ffa726',
+                    opacity=0.7
+                ))
+                fig_rating.update_layout(
+                    title=f"Spreads par Rating - {selected_sector} vs Marché",
+                    xaxis_title="Rating",
+                    yaxis_title="Spread (bps)",
+                    barmode='group',
+                    height=400
+                )
+            else:
+                fig_rating = px.bar(
+                    sector_rating_stats, 
+                    x='rating', 
+                    y='mean',
+                    title=f"Spreads Moyens par Rating - {selected_sector}",
+                    color='mean',
+                    color_continuous_scale='RdYlBu_r'
+                )
+                fig_rating.update_layout(height=400)
+            
+            st.plotly_chart(fig_rating, use_container_width=True)
         
-        if fig_radar.data:  # Seulement si il y a des traces
-            fig_radar.update_layout(
-                polar=dict(
-                    radialaxis=dict(
-                        visible=True,
-                        range=[0, max(sector_rating[available_ratings].max()) if len(available_ratings) > 0 else 100]
-                    )),
-                showlegend=True,
-                title="Profil des Spreads par Secteur et Rating"
+        with col_g2:
+            # Distribution des spreads avec box plot
+            fig_dist = go.Figure()
+            fig_dist.add_trace(go.Box(
+                y=sector_data['spread'],
+                name=selected_sector,
+                boxpoints='outliers',
+                marker_color='#2a5298'
+            ))
+            
+            if show_comparison:
+                fig_dist.add_trace(go.Box(
+                    y=df['spread'],
+                    name='Marché Global',
+                    boxpoints=False,
+                    marker_color='#ffa726',
+                    opacity=0.7
+                ))
+            
+            fig_dist.update_layout(
+                title=f"Distribution des Spreads - {selected_sector}",
+                yaxis_title="Spread (bps)",
+                height=400
             )
-            st.plotly_chart(fig_radar, use_container_width=True, key="tab1_fig_radar")
-        else:
-            st.info("Pas assez de données pour le graphique radar")
-    else:
-        st.info("Pas assez de données pour le graphique radar")
-    
-    # Tableaux de synthèse
-    st.subheader("📊 Tableaux de Synthèse")
-    
-    col5, col6, col7 = st.columns(3)
-    
-    with col5:
-        st.markdown("**Top 5 Secteurs - Spreads les plus élevés**")
-        top_sectors = spread_by_sector.sort_values('mean', ascending=False).head()
-        st.dataframe(top_sectors[['mean', 'count']])
-    
-    with col6:
-        st.markdown("**Ratings - Vue d'ensemble**")
-        rating_summary = spread_by_rating.sort_values('mean', ascending=False)
-        st.dataframe(rating_summary[['mean', 'count']])
-    
-    with col7:
-        st.markdown("**Échéances - Vue d'ensemble**")
-        maturity_summary = spread_by_maturity.sort_values('mean', ascending=False)
-        st.dataframe(maturity_summary[['mean', 'count']])
-    
-    # Insights automatiques - VERSION SÉCURISÉE
-    st.subheader("💡 Points Clés")
-    
-    if len(spread_by_sector) > 0 and len(spread_by_rating) > 0:
-        max_spread_sector = spread_by_sector['mean'].idxmax()
-        min_spread_sector = spread_by_sector['mean'].idxmin()
-        max_spread_rating = spread_by_rating['mean'].idxmax()
-        min_spread_rating = spread_by_rating['mean'].idxmin()
+            st.plotly_chart(fig_dist, use_container_width=True)
         
-        insights = f"""
-        **Observations principales :**
+        # Graphique par échéance
+        st.subheader("📅 Analyse par Échéance")
         
-        • **Secteur le plus risqué** : {max_spread_sector} ({spread_by_sector.loc[max_spread_sector, 'mean']:.0f} bps en moyenne)
-        • **Secteur le moins risqué** : {min_spread_sector} ({spread_by_sector.loc[min_spread_sector, 'mean']:.0f} bps en moyenne)
-        • **Rating le plus pénalisé** : {max_spread_rating} ({spread_by_rating.loc[max_spread_rating, 'mean']:.0f} bps en moyenne)
-        • **Rating le mieux traité** : {min_spread_rating} ({spread_by_rating.loc[min_spread_rating, 'mean']:.0f} bps en moyenne)
-        • **Nombre total d'obligations** : {len(df):,}
-        • **Spread moyen global** : {df['spread'].mean():.0f} bps
-        """
+        maturity_stats = sector_data.groupby('fourchette_annee')['spread'].agg(['mean', 'std', 'count']).reset_index()
         
-        st.markdown(insights)
-    else:
-        st.warning("Données insuffisantes pour générer les insights")
+        fig_maturity = px.line(
+            maturity_stats, 
+            x='fourchette_annee', 
+            y='mean',
+            title=f"Courbe des Spreads par Échéance - {selected_sector}",
+            markers=True,
+            line_shape='spline'
+        )
+        
+        # Ajouter les barres d'erreur
+        fig_maturity.add_trace(go.Scatter(
+            x=maturity_stats['fourchette_annee'],
+            y=maturity_stats['mean'] + maturity_stats['std'],
+            mode='lines',
+            line=dict(width=0),
+            showlegend=False,
+            hoverinfo='skip'
+        ))
+        fig_maturity.add_trace(go.Scatter(
+            x=maturity_stats['fourchette_annee'],
+            y=maturity_stats['mean'] - maturity_stats['std'],
+            mode='lines',
+            fill='tonexty',
+            line=dict(width=0),
+            name='±1σ',
+            fillcolor='rgba(42, 82, 152, 0.2)'
+        ))
+        
+        fig_maturity.update_layout(height=400)
+        st.plotly_chart(fig_maturity, use_container_width=True)
+        
+        # Table des obligations du secteur
+        st.subheader(f"💼 Obligations du secteur {selected_sector}")
+        
+        display_sector = sector_data[['nom_obligation', 'fourchette_annee', 'rating', 'spread']].copy()
+        display_sector = display_sector.sort_values('spread', ascending=False)
+        
+        st.dataframe(
+            display_sector,
+            column_config={
+                "nom_obligation": "Nom de l'Obligation",
+                "fourchette_annee": "Échéance",
+                "rating": "Rating",
+                "spread": st.column_config.NumberColumn("Spread (bps)", format="%.1f")
+            },
+            hide_index=True,
+            use_container_width=True
+        )
 
 with tab2:
-    st.markdown("## 📈 Graphiques Interactifs")
-    st.markdown("*Explorez les données avec des graphiques personnalisables et des filtres interactifs*")
+    st.header("📊 Dashboard Global")
     
-    # Filtres améliorés
-    st.markdown("### 🎛️ Filtres de Données")
-    c1, c2, c3, c4 = st.columns(4)
-    sel_s = c1.multiselect("🏭 Secteurs", secteurs, default=secteurs)
-    sel_e = c2.multiselect("📅 Échéances", echeances, default=echeances)
-    sel_r = c3.multiselect("⭐ Ratings", ratings_available, default=ratings_available)  # Utiliser ratings_available
+    # Filtres globaux
+    st.subheader("🎛️ Filtres Globaux")
+    col_f1, col_f2, col_f3, col_f4 = st.columns(4)
     
-    # Nouveau filtre par spread
-    spread_range = c4.slider(
-        "💰 Fourchette Spread (bps)", 
-        min_value=int(df['spread'].min()), 
-        max_value=int(df['spread'].max()), 
-        value=(int(df['spread'].min()), int(df['spread'].max()))
-    )
+    with col_f1:
+        selected_sectors = st.multiselect("🏭 Secteurs", secteurs, default=secteurs[:5])
+    with col_f2:
+        selected_ratings = st.multiselect("⭐ Ratings", ratings_available, default=ratings_available[:6])
+    with col_f3:
+        selected_maturities = st.multiselect("📅 Échéances", echeances, default=echeances)
+    with col_f4:
+        spread_range = st.slider(
+            "💰 Fourchette Spread (bps)",
+            min_value=int(df['spread'].min()),
+            max_value=int(df['spread'].max()),
+            value=(int(df['spread'].min()), int(df['spread'].max()))
+        )
     
     # Application des filtres
-    df_f = df[
-        df['secteur'].isin(sel_s) &
-        df['fourchette_annee'].isin(sel_e) &
-        df['rating'].isin(sel_r) &
+    df_filtered = df[
+        df['secteur'].isin(selected_sectors) &
+        df['rating'].isin(selected_ratings) &
+        df['fourchette_annee'].isin(selected_maturities) &
         (df['spread'] >= spread_range[0]) &
         (df['spread'] <= spread_range[1])
     ]
     
-    # Metrics en haut
-    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-    col_m1.metric("📊 Obligations sélectionnées", f"{len(df_f):,}")
-    if len(df_f) > 0:
-        col_m2.metric("📈 Spread moyen", f"{df_f['spread'].mean():.0f} bps")
-        col_m3.metric("📉 Spread médian", f"{df_f['spread'].median():.0f} bps")
-        col_m4.metric("📏 Écart-type", f"{df_f['spread'].std():.0f} bps")
-    else:
-        col_m2.metric("📈 Spread moyen", "N/A")
-        col_m3.metric("📉 Spread médian", "N/A")
-        col_m4.metric("📏 Écart-type", "N/A")
-    
-    st.markdown("---")
-    
-    # Graphiques améliorés
-    if not df_f.empty:
+    if not df_filtered.empty:
+        # Métriques filtrées
+        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+        col_m1.metric("📊 Obligations", f"{len(df_filtered):,}")
+        col_m2.metric("📈 Spread Moyen", f"{df_filtered['spread'].mean():.0f} bps")
+        col_m3.metric("📉 Spread Médian", f"{df_filtered['spread'].median():.0f} bps")
+        col_m4.metric("📏 Écart-type", f"{df_filtered['spread'].std():.0f} bps")
+        
+        # Graphiques principaux
         col_g1, col_g2 = st.columns(2)
         
         with col_g1:
-            st.markdown("### 🔥 Heatmap Animée par Secteur")
-            try:
-                fig1 = px.density_heatmap(
-                    df_f, 
-                    x='fourchette_annee', 
-                    y='rating_num', 
-                    z='spread', 
-                    histfunc='avg', 
-                    animation_frame='secteur',
-                    labels={'fourchette_annee':'Échéance','rating_num':'Rating','spread':'Spread moyen (bps)'},
-                    color_continuous_scale='RdYlBu_r'
-                )
-                fig1.update_layout(height=450)
-                st.plotly_chart(fig1, use_container_width=True, key="tab2_fig1")
-            except Exception as e:
-                st.error(f"Impossible d'afficher la heatmap animée: {str(e)}")
+            # Heatmap Rating vs Échéance
+            pivot_data = df_filtered.pivot_table(
+                index='rating',
+                columns='fourchette_annee',
+                values='spread',
+                aggfunc='mean'
+            )
+            
+            # Trier les ratings
+            rating_order = sorted([r for r in pivot_data.index if r in alpha_to_num], 
+                                key=lambda x: alpha_to_num[x], reverse=True)
+            pivot_data = pivot_data.reindex(rating_order)
+            
+            fig_heatmap = px.imshow(
+                pivot_data.values,
+                x=pivot_data.columns,
+                y=pivot_data.index,
+                title="Heatmap des Spreads : Rating × Échéance",
+                color_continuous_scale='RdYlBu_r',
+                aspect='auto'
+            )
+            fig_heatmap.update_layout(height=400)
+            st.plotly_chart(fig_heatmap, use_container_width=True)
         
         with col_g2:
-            st.markdown("### 📊 Histogramme des Spreads")
-            fig_hist = px.histogram(
-                df_f, 
-                x='spread', 
-                color='secteur',
-                title="Distribution des Spreads par Secteur",
-                labels={'spread': 'Spread (bps)', 'count': 'Nombre d\'obligations'},
-                marginal="rug"
-            )
-            fig_hist.update_layout(height=450)
-            st.plotly_chart(fig_hist, use_container_width=True, key="tab2_fig_hist")
-        
-        st.markdown("### 🎯 Graphiques de Corrélation")
-        col_g3, col_g4 = st.columns(2)
-        
-        with col_g3:
-            # Scatter plot amélioré
-            grp = df_f.groupby(['secteur','fourchette_annee','rating_num'], as_index=False)['spread'].mean()
-            if len(grp) > 0:
-                # Nettoyer les données groupées
-                grp = grp.dropna()
+            # Graphique 3D amélioré
+            if len(df_filtered) > 0:
+                grp_3d = df_filtered.groupby(['secteur', 'fourchette_annee', 'rating_num'], as_index=False)['spread'].mean()
+                grp_3d = grp_3d.dropna()
+                grp_3d = grp_3d[grp_3d['spread'] > 0]
                 
-                if len(grp) > 0:
-                    grp['bucket'] = pd.Categorical(grp['fourchette_annee']).codes
+                if len(grp_3d) > 0:
+                    grp_3d['maturity_code'] = pd.Categorical(grp_3d['fourchette_annee']).codes
                     
-                    # S'assurer que toutes les valeurs sont valides pour Plotly
-                    grp = grp[grp['spread'] > 0]  # Enlever les spreads <= 0 qui poseraient problème pour size
-                    
-                    if len(grp) > 0:
-                        fig2 = px.scatter(
-                            grp, 
-                            x='bucket', 
-                            y='rating_num', 
-                            size='spread',
-                            color='secteur',
-                            hover_data={'spread': ':.1f'},
-                            title="Relation Rating-Échéance-Spread",
-                            labels={'bucket':'Code Échéance','rating_num':'Rating (numérique)', 'spread': 'Spread (bps)'}
-                        )
-                        fig2.update_layout(height=400)
-                        st.plotly_chart(fig2, use_container_width=True, key="tab2_fig2")
-                    else:
-                        st.info("Pas assez de données valides pour le scatter plot")
-                else:
-                    st.info("Pas de données après nettoyage")
-            else:
-                st.info("Pas assez de données pour le graphique de corrélation")
-        
-        with col_g4:
-            # Sunburst chart
-            if len(df_f) > 0:
-                try:
-                    fig_sun = px.sunburst(
-                        df_f,
-                        path=['secteur', 'fourchette_annee', 'rating'],
-                        values='spread',
-                        title="Répartition Hiérarchique des Spreads"
-                    )
-                    fig_sun.update_layout(height=400)
-                    st.plotly_chart(fig_sun, use_container_width=True, key="tab2_fig_sun")
-                except Exception as e:
-                    st.info(f"Graphique sunburst indisponible: {str(e)}")
-        
-        st.markdown("### 🌐 Vue 3D Interactive")
-        grp = df_f.groupby(['secteur','fourchette_annee','rating_num'], as_index=False)['spread'].mean()
-        if len(grp) > 0:
-            # Nettoyer les données pour la vue 3D
-            grp = grp.dropna()
-            
-            if len(grp) > 0:
-                grp['bucket'] = pd.Categorical(grp['fourchette_annee']).codes
-                
-                # S'assurer que toutes les valeurs sont valides
-                grp = grp[grp['spread'] > 0]
-                
-                if len(grp) > 0:
-                    fig3 = px.scatter_3d(
-                        grp, 
-                        x='rating_num', 
-                        y='bucket', 
-                        z='spread', 
+                    fig_3d = px.scatter_3d(
+                        grp_3d,
+                        x='rating_num',
+                        y='maturity_code',
+                        z='spread',
                         color='secteur',
                         size='spread',
                         title="Vue 3D : Rating × Échéance × Spread",
-                        labels={'rating_num':'Rating','bucket':'Échéance','spread':'Spread (bps)'}
+                        labels={
+                            'rating_num': 'Rating (numérique)',
+                            'maturity_code': 'Échéance (code)',
+                            'spread': 'Spread (bps)'
+                        },
+                        height=400
                     )
-                    fig3.update_layout(height=600)
-                    st.plotly_chart(fig3, use_container_width=True, key="tab2_fig3")
+                    st.plotly_chart(fig_3d, use_container_width=True)
                 else:
-                    st.info("Pas de données valides après nettoyage pour la vue 3D")
-            else:
-                st.info("Pas de données après nettoyage pour la vue 3D")
-        else:
-            st.info("Pas assez de données pour la vue 3D")
-    
+                    st.info("Pas assez de données pour la vue 3D")
+        
+        # Analyse comparative par secteur
+        st.subheader("🏭 Comparaison Inter-Sectorielle")
+        
+        sector_comparison = df_filtered.groupby('secteur')['spread'].agg(['mean', 'std', 'count']).reset_index()
+        sector_comparison = sector_comparison.sort_values('mean', ascending=True)
+        
+        fig_sectors = px.bar(
+            sector_comparison,
+            x='mean',
+            y='secteur',
+            orientation='h',
+            title="Spread Moyen par Secteur",
+            color='mean',
+            color_continuous_scale='RdYlBu_r'
+        )
+        fig_sectors.update_layout(height=400)
+        st.plotly_chart(fig_sectors, use_container_width=True)
+        
     else:
         st.warning("⚠️ Aucune donnée ne correspond aux filtres sélectionnés")
 
 with tab3:
-    st.markdown("## 📊 Tables & Données")
-    st.markdown("*Consultez les données détaillées et les statistiques descriptives*")
+    st.header("🔍 Recherche Détaillée")
     
-    # Statistiques globales améliorées
-    col_stat1, col_stat2 = st.columns(2)
-    
-    with col_stat1:
-        st.markdown("### 📈 Statistiques Descriptives Globales")
-        desc_stats = df['spread'].describe()
-        desc_df = pd.DataFrame({
-            'Statistique': ['Nombre', 'Moyenne', 'Écart-type', 'Minimum', '25%', 'Médiane', '75%', 'Maximum'],
-            'Valeur (bps)': [f"{desc_stats['count']:.0f}", f"{desc_stats['mean']:.1f}", 
-                           f"{desc_stats['std']:.1f}", f"{desc_stats['min']:.1f}",
-                           f"{desc_stats['25%']:.1f}", f"{desc_stats['50%']:.1f}",
-                           f"{desc_stats['75%']:.1f}", f"{desc_stats['max']:.1f}"]
-        })
-        st.dataframe(desc_df, use_container_width=True)
-    
-    with col_stat2:
-        st.markdown("### 🎯 Répartition par Catégorie")
-        
-        # Comptages par catégorie
-        sector_count = df['secteur'].value_counts()
-        rating_count = df['rating'].value_counts()
-        maturity_count = df['fourchette_annee'].value_counts()
-        
-        st.markdown("**Nombre d'obligations par secteur (Top 5):**")
-        st.dataframe(sector_count.head().to_frame('Nombre'), use_container_width=True)
-    
-    # Table pivot interactive améliorée
-    st.markdown("### 🏗️ Table Pivot Interactive")
-    
-    pivot_options = st.radio(
-        "Choisissez la vue :",
-        ["Rating × Échéance", "Secteur × Échéance", "Secteur × Rating"],
-        horizontal=True
-    )
-    
-    try:
-        if pivot_options == "Rating × Échéance":
-            pivot = df.pivot_table(
-                index='rating', 
-                columns='fourchette_annee', 
-                values='spread', 
-                aggfunc=['mean', 'count'],
-                fill_value=0
-            ).round(1)
-        elif pivot_options == "Secteur × Échéance":
-            pivot = df.pivot_table(
-                index='secteur', 
-                columns='fourchette_annee', 
-                values='spread', 
-                aggfunc=['mean', 'count'],
-                fill_value=0
-            ).round(1)
-        else:  # Secteur × Rating
-            pivot = df.pivot_table(
-                index='secteur', 
-                columns='rating', 
-                values='spread', 
-                aggfunc=['mean', 'count'],
-                fill_value=0
-            ).round(1)
-        
-        st.dataframe(pivot, use_container_width=True)
-    except Exception as e:
-        st.error(f"Erreur lors de la création du tableau pivot: {str(e)}")
-    
-    # Données brutes avec filtres
-    st.markdown("### 🔍 Données Brutes (échantillon)")
-    
-    # Filtres pour les données brutes
-    col_f1, col_f2 = st.columns(2)
-    filter_sector = col_f1.selectbox("Filtrer par secteur", ["Tous"] + secteurs)
-    filter_rating = col_f2.selectbox("Filtrer par rating", ["Tous"] + ratings_available)
-    
-    # Application des filtres
-    display_df = df.copy()
-    if filter_sector != "Tous":
-        display_df = display_df[display_df['secteur'] == filter_sector]
-    if filter_rating != "Tous":
-        display_df = display_df[display_df['rating'] == filter_rating]
-    
-    # Affichage avec tri
-    sort_by = st.selectbox("Trier par", ["spread", "secteur", "rating", "fourchette_annee"])
-    ascending = st.checkbox("Ordre croissant", value=True)
-    
-    display_df_sorted = display_df.sort_values(sort_by, ascending=ascending)
-    
-    st.markdown(f"**Affichage de {len(display_df_sorted)} obligations** (sur {len(df)} au total)")
-    st.dataframe(
-        display_df_sorted[['secteur', 'fourchette_annee', 'rating', 'spread']], 
-        use_container_width=True
-    )
-    
-    # Bouton de téléchargement
-    csv = display_df_sorted.to_csv(index=False)
-    st.download_button(
-        label="💾 Télécharger les données filtrées (CSV)",
-        data=csv,
-        file_name="spreads_obligataires_filtered.csv",
-        mime="text/csv"
-    )
-
-with tab4:
-    st.markdown("## 🔍 Recherche Avancée")
-    st.markdown("*Trouvez et estimez des spreads avec des outils de recherche sophistiqués*")
-    
-    # Mode de recherche
+    # Modes de recherche
     search_mode = st.radio(
         "Mode de recherche :",
-        ["🎯 Recherche Exacte", "🔍 Recherche Approximative", "📊 Comparaison Multiple"],
+        ["🎯 Recherche par Nom", "🔍 Recherche Multi-Critères", "📊 Comparateur"],
         horizontal=True
     )
     
-    if search_mode == "🎯 Recherche Exacte":
-        st.markdown("### Recherche par critères précis")
+    if search_mode == "🎯 Recherche par Nom":
+        st.subheader("Recherche par nom d'obligation")
+        
+        search_term = st.text_input("🔍 Tapez le nom ou une partie du nom de l'obligation :")
+        
+        if search_term:
+            results = df[df['nom_obligation'].str.contains(search_term, case=False, na=False)]
+            
+            if not results.empty:
+                st.success(f"✅ {len(results)} obligation(s) trouvée(s)")
+                
+                for idx, row in results.iterrows():
+                    with st.expander(f"📋 {row['nom_obligation']}", expanded=True):
+                        col1, col2, col3, col4 = st.columns(4)
+                        col1.metric("🏭 Secteur", row['secteur'])
+                        col2.metric("📅 Échéance", row['fourchette_annee'])
+                        col3.metric("⭐ Rating", row['rating'])
+                        col4.metric("💰 Spread", f"{row['spread']:.1f} bps")
+                        
+                        # Comparaison avec les pairs
+                        peers = df[(df['secteur'] == row['secteur']) & 
+                                  (df['rating'] == row['rating']) & 
+                                  (df['nom_obligation'] != row['nom_obligation'])]
+                        
+                        if not peers.empty:
+                            peer_mean = peers['spread'].mean()
+                            deviation = row['spread'] - peer_mean
+                            st.info(f"📊 Comparaison avec les pairs du secteur {row['secteur']} en rating {row['rating']} : "
+                                   f"Moyenne = {peer_mean:.1f} bps | Écart = {deviation:+.1f} bps")
+            else:
+                st.warning("❌ Aucune obligation trouvée")
+    
+    elif search_mode == "🔍 Recherche Multi-Critères":
+        st.subheader("Recherche avancée par critères")
+        
         col_s1, col_s2, col_s3 = st.columns(3)
-        ss = col_s1.selectbox("Secteur", secteurs)
-        se = col_s2.selectbox("Échéance", echeances)
-        sr = col_s3.selectbox("Rating", ratings_available)
+        with col_s1:
+            criteria_sectors = st.multiselect("🏭 Secteurs", secteurs)
+        with col_s2:
+            criteria_ratings = st.multiselect("⭐ Ratings", ratings_available)
+        with col_s3:
+            criteria_maturities = st.multiselect("📅 Échéances", echeances)
         
-        sub = df[(df['secteur']==ss)&(df['fourchette_annee']==se)&(df['rating']==sr)]
+        criteria_spread = st.slider(
+            "💰 Fourchette de spread recherchée",
+            min_value=int(df['spread'].min()),
+            max_value=int(df['spread'].max()),
+            value=(int(df['spread'].quantile(0.25)), int(df['spread'].quantile(0.75)))
+        )
         
-        if not sub.empty:
-            col_m1, col_m2, col_m3 = st.columns(3)
-            col_m1.metric("📊 Spread moyen", f"{sub['spread'].mean():.2f} bps")
-            col_m2.metric("📏 Écart-type", f"{sub['spread'].std():.2f} bps" if len(sub) > 1 else "N/A")
-            col_m3.metric("🔢 Nombre d'obligations", len(sub))
+        if st.button("🔍 Lancer la recherche"):
+            filtered_results = df.copy()
             
-            st.markdown("**Détail des obligations trouvées :**")
-            st.dataframe(sub[['secteur', 'fourchette_annee', 'rating', 'spread']], use_container_width=True)
+            if criteria_sectors:
+                filtered_results = filtered_results[filtered_results['secteur'].isin(criteria_sectors)]
+            if criteria_ratings:
+                filtered_results = filtered_results[filtered_results['rating'].isin(criteria_ratings)]
+            if criteria_maturities:
+                filtered_results = filtered_results[filtered_results['fourchette_annee'].isin(criteria_maturities)]
             
-            if len(sub) > 1:
-                fig_detail = px.histogram(sub, x='spread', title=f"Distribution - {ss} | {se} | {sr}")
-                st.plotly_chart(fig_detail, use_container_width=True, key="tab4_fig_detail")
-        else:
-            st.warning("❌ Aucune donnée exacte trouvée")
-            st.markdown("**Suggestions alternatives :**")
+            filtered_results = filtered_results[
+                (filtered_results['spread'] >= criteria_spread[0]) &
+                (filtered_results['spread'] <= criteria_spread[1])
+            ]
             
-            # Recherche par secteur et échéance
-            temp = df[(df['secteur']==ss)&(df['fourchette_annee']==se)]
-            if not temp.empty:
-                temp = temp.copy()
-                temp['diff'] = abs(temp['rating_num'] - alpha_to_num[sr])
-                closest = temp.nsmallest(5, 'diff')
+            if not filtered_results.empty:
+                st.success(f"✅ {len(filtered_results)} obligation(s) correspondent aux critères")
                 
-                st.markdown(f"**Même secteur ({ss}) et échéance ({se}), ratings proches :**")
-                st.dataframe(closest[['rating', 'spread', 'diff']], use_container_width=True)
+                # Statistiques des résultats
+                col_r1, col_r2, col_r3 = st.columns(3)
+                col_r1.metric("📈 Spread moyen", f"{filtered_results['spread'].mean():.1f} bps")
+                col_r2.metric("📉 Spread médian", f"{filtered_results['spread'].median():.1f} bps")
+                col_r3.metric("📏 Écart-type", f"{filtered_results['spread'].std():.1f} bps")
                 
-                fig_alt = px.bar(closest, x='rating', y='spread', 
-                               title=f"Spreads alternatifs - {ss} | {se}")
-                st.plotly_chart(fig_alt, use_container_width=True, key="tab4_fig_alt")
+                # Affichage des résultats
+                st.dataframe(
+                    filtered_results[['nom_obligation', 'secteur', 'fourchette_annee', 'rating', 'spread']],
+                    column_config={
+                        "nom_obligation": "Nom de l'Obligation",
+                        "secteur": "Secteur",
+                        "fourchette_annee": "Échéance",
+                        "rating": "Rating",
+                        "spread": st.column_config.NumberColumn("Spread (bps)", format="%.1f")
+                    },
+                    hide_index=True,
+                    use_container_width=True
+                )
+            else:
+                st.warning("❌ Aucune obligation ne correspond aux critères")
     
-    elif search_mode == "🔍 Recherche Approximative":
-        st.markdown("### Recherche par fourchettes")
+    else:  # Comparateur
+        st.subheader("📊 Comparateur d'Obligations")
         
-        # Sélecteurs multiples pour recherche approximative
-        col_a1, col_a2 = st.columns(2)
-        selected_sectors = col_a1.multiselect("Secteurs d'intérêt", secteurs, default=secteurs[:3])
-        selected_ratings = col_a2.multiselect("Ratings d'intérêt", ratings_available, default=ratings_available[:5])
+        st.markdown("**Sélectionnez jusqu'à 5 obligations à comparer :**")
         
-        # Fourchette de spread recherchée
-        spread_target = st.slider("Fourchette de spread recherchée (bps)", 
-                                 int(df['spread'].min()), int(df['spread'].max()), 
-                                 (100, 300))
+        bond_names = df['nom_obligation'].tolist()
+        selected_bonds = st.multiselect(
+            "💼 Choisissez les obligations",
+            bond_names,
+            max_selections=5
+        )
         
-        # Recherche
-        approx_results = df[
-            df['secteur'].isin(selected_sectors) &
-            df['rating'].isin(selected_ratings) &
-            (df['spread'] >= spread_target[0]) &
-            (df['spread'] <= spread_target[1])
-        ]
-        
-        if not approx_results.empty:
-            st.success(f"✅ {len(approx_results)} obligations trouvées")
+        if selected_bonds:
+            comparison_data = df[df['nom_obligation'].isin(selected_bonds)]
             
-            # Statistiques des résultats
-            col_r1, col_r2, col_r3, col_r4 = st.columns(4)
-            col_r1.metric("📊 Spread moyen", f"{approx_results['spread'].mean():.1f} bps")
-            col_r2.metric("📉 Spread min", f"{approx_results['spread'].min():.1f} bps")
-            col_r3.metric("📈 Spread max", f"{approx_results['spread'].max():.1f} bps")
-            col_r4.metric("📏 Écart-type", f"{approx_results['spread'].std():.1f} bps")
+            # Tableau comparatif
+            st.dataframe(
+                comparison_data[['nom_obligation', 'secteur', 'fourchette_annee', 'rating', 'spread']],
+                column_config={
+                    "nom_obligation": "Obligation",
+                    "secteur": "Secteur",
+                    "fourchette_annee": "Échéance",
+                    "rating": "Rating",
+                    "spread": st.column_config.NumberColumn("Spread (bps)", format="%.1f")
+                },
+                hide_index=True,
+                use_container_width=True
+            )
             
-            # Graphiques des résultats
-            col_g1, col_g2 = st.columns(2)
-            with col_g1:
-                fig_sector_approx = px.box(approx_results, x='secteur', y='spread', 
-                                         title="Distribution par secteur")
-                fig_sector_approx.update_xaxes(tickangle=45)
-                st.plotly_chart(fig_sector_approx, use_container_width=True, key="tab4_fig_sector_approx")
-            
-            with col_g2:
-                fig_rating_approx = px.box(approx_results, x='rating', y='spread', 
-                                         title="Distribution par rating")
-                fig_rating_approx.update_xaxes(tickangle=45)
-                st.plotly_chart(fig_rating_approx, use_container_width=True, key="tab4_fig_rating_approx")
-            
-            # Table des résultats
-            st.dataframe(approx_results.sample(min(20, len(approx_results))), use_container_width=True)
-        else:
-            st.error("❌ Aucun résultat trouvé avec ces critères")
-    
-    else:  # Comparaison Multiple
-        st.markdown("### Comparaison de plusieurs profils")
-        
-        st.markdown("**Définissez jusqu'à 3 profils à comparer :**")
-        
-        profiles = []
-        for i in range(3):
-            st.markdown(f"**Profil {i+1} :**")
-            col_p1, col_p2, col_p3, col_p4 = st.columns(4)
-            
-            p_sector = col_p1.selectbox(f"Secteur {i+1}", [""] + secteurs, key=f"sector_{i}")
-            p_maturity = col_p2.selectbox(f"Échéance {i+1}", [""] + echeances, key=f"maturity_{i}")
-            p_rating = col_p3.selectbox(f"Rating {i+1}", [""] + ratings_available, key=f"rating_{i}")
-            p_name = col_p4.text_input(f"Nom du profil {i+1}", value=f"Profil {i+1}", key=f"name_{i}")
-            
-            if p_sector and p_maturity and p_rating:
-                profiles.append({
-                    'name': p_name,
-                    'secteur': p_sector,
-                    'fourchette_annee': p_maturity,
-                    'rating': p_rating
-                })
-        
-        if profiles:
-            st.markdown("### 📊 Résultats de la Comparaison")
-            
-            comparison_data = []
-            for profile in profiles:
-                result = df[
-                    (df['secteur'] == profile['secteur']) &
-                    (df['fourchette_annee'] == profile['fourchette_annee']) &
-                    (df['rating'] == profile['rating'])
-                ]
-                
-                if not result.empty:
-                    comparison_data.append({
-                        'Profil': profile['name'],
-                        'Secteur': profile['secteur'],
-                        'Échéance': profile['fourchette_annee'],
-                        'Rating': profile['rating'],
-                        'Spread Moyen (bps)': round(result['spread'].mean(), 2),
-                        'Nb Obligations': len(result),
-                        'Spread Min (bps)': round(result['spread'].min(), 2),
-                        'Spread Max (bps)': round(result['spread'].max(), 2)
-                    })
-                else:
-                    comparison_data.append({
-                        'Profil': profile['name'],
-                        'Secteur': profile['secteur'],
-                        'Échéance': profile['fourchette_annee'],
-                        'Rating': profile['rating'],
-                        'Spread Moyen (bps)': "N/A",
-                        'Nb Obligations': 0,
-                        'Spread Min (bps)': "N/A",
-                        'Spread Max (bps)': "N/A"
-                    })
-            
-            if comparison_data:
-                comparison_df = pd.DataFrame(comparison_data)
-                st.dataframe(comparison_df, use_container_width=True)
-                
-                # Graphique de comparaison
-                valid_data = [d for d in comparison_data if d['Nb Obligations'] > 0]
-                if len(valid_data) > 1:
-                    fig_comp = px.bar(
-                        pd.DataFrame(valid_data), 
-                        x='Profil', 
-                        y='Spread Moyen (bps)',
-                        title="Comparaison des Spreads Moyens",
-                        color='Profil'
-                    )
-                    st.plotly_chart(fig_comp, use_container_width=True, key="tab4_fig_comp")
+            # Graphique comparatif
+            if len(selected_bonds) > 1:
+                fig_comp = px.bar(
+                    comparison_data,
+                    x='nom_obligation',
+                    y='spread',
+                    color='secteur',
+                    title="Comparaison des Spreads",
+                    text='spread'
+                )
+                fig_comp.update_traces(texttemplate='%{text:.1f} bps', textposition='outside')
+                fig_comp.update_layout(xaxis_tickangle=-45)
+                st.plotly_chart(fig_comp, use_container_width=True)
 
+with tab4:
+    st.header("📋 Base de Données Complète")
+    
+    # Outils de gestion
+    col_t1, col_t2, col_t3 = st.columns(3)
+    
+    with col_t1:
+        sort_column = st.selectbox(
+            "📊 Trier par",
+            ['spread', 'nom_obligation', 'secteur', 'rating', 'fourchette_annee']
+        )
+    
+    with col_t2:
+        sort_ascending = st.radio("Ordre", ["Croissant", "Décroissant"], horizontal=True) == "Croissant"
+    
+    with col_t3:
+        items_per_page = st.selectbox("Éléments par page", [25, 50, 100, 200])
+    
+    # Filtres de la base de données
+    col_f1, col_f2, col_f3 = st.columns(3)
+    with col_f1:
+        db_sectors = st.multiselect("🏭 Filtrer par secteurs", secteurs, key="db_sectors")
+    with col_f2:
+        db_ratings = st.multiselect("⭐ Filtrer par ratings", ratings_available, key="db_ratings")
+    with col_f3:
+        db_maturities = st.multiselect("📅 Filtrer par échéances", echeances, key="db_maturities")
+    
+    # Application des filtres
+    db_filtered = df.copy()
+    if db_sectors:
+        db_filtered = db_filtered[db_filtered['secteur'].isin(db_sectors)]
+    if db_ratings:
+        db_filtered = db_filtered[db_filtered['rating'].isin(db_ratings)]
+    if db_maturities:
+        db_filtered = db_filtered[db_filtered['fourchette_annee'].isin(db_maturities)]
+    
+    # Tri
+    db_filtered = db_filtered.sort_values(sort_column, ascending=sort_ascending)
+    
+    # Pagination
+    total_items = len(db_filtered)
+    total_pages = (total_items - 1) // items_per_page + 1
+    
+    if total_pages > 1:
+        page = st.selectbox(f"Page (Total: {total_pages})", list(range(1, total_pages + 1)))
+        start_idx = (page - 1) * items_per_page
+        end_idx = min(start_idx + items_per_page, total_items)
+        db_display = db_filtered.iloc[start_idx:end_idx]
+        st.info(f"Affichage des éléments {start_idx + 1} à {end_idx} sur {total_items}")
+    else:
+        db_display = db_filtered
+        st.info(f"Affichage de {total_items} obligations")
+    
+    # Affichage de la base de données
+    st.dataframe(
+        db_display[['nom_obligation', 'secteur', 'fourchette_annee', 'rating', 'spread']],
+        column_config={
+            "nom_obligation": st.column_config.TextColumn("Nom de l'Obligation", width="large"),
+            "secteur": st.column_config.TextColumn("Secteur", width="medium"),
+            "fourchette_annee": st.column_config.TextColumn("Échéance", width="small"),
+            "rating": st.column_config.TextColumn("Rating", width="small"),
+            "spread": st.column_config.NumberColumn("Spread (bps)", format="%.1f", width="small")
+        },
+        hide_index=True,
+        use_container_width=True,
+        height=600
+    )
+    
+    # Export des données
+    st.subheader("📤 Export des Données")
+    col_e1, col_e2 = st.columns(2)
+    
+    with col_e1:
+        # Export CSV
+        csv_data = db_filtered.to_csv(index=False)
+        st.download_button(
+            label="💾 Télécharger en CSV",
+            data=csv_data,
+            file_name=f"bond_spreads_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv"
+        )
+    
+    with col_e2:
+        # Export Excel
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            db_filtered.to_excel(writer, sheet_name='Bond_Spreads', index=False)
+        
+        st.download_button(
+            label="📊 Télécharger en Excel",
+            data=buffer.getvalue(),
+            file_name=f"bond_spreads_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+# Footer avec informations système
 st.markdown("---")
-st.markdown("*App Streamlit - analyse des spreads obligataires.*")
+col_info1, col_info2, col_info3 = st.columns(3)
+
+with col_info1:
+    st.info(f"📊 **{len(df):,}** obligations dans la base")
+
+with col_info2:
+    st.info(f"🏭 **{df['secteur'].nunique()}** secteurs couverts")
+
+with col_info3:
+    last_update = pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')
+    st.info(f"🕐 Dernière mise à jour : {last_update}")
+
+# Notifications et alertes
+if not df.empty:
+    # Détection d'outliers
+    Q1 = df['spread'].quantile(0.25)
+    Q3 = df['spread'].quantile(0.75)
+    IQR = Q3 - Q1
+    lower_bound = Q1 - 1.5 * IQR
+    upper_bound = Q3 + 1.5 * IQR
+    
+    outliers = df[(df['spread'] < lower_bound) | (df['spread'] > upper_bound)]
+    
+    if not outliers.empty and len(outliers) <= 10:
+        with st.expander(f"⚠️ Alertes : {len(outliers)} obligation(s) avec des spreads atypiques"):
+            for _, outlier in outliers.iterrows():
+                if outlier['spread'] > upper_bound:
+                    st.error(f"🔴 **{outlier['nom_obligation']}** - Spread élevé : {outlier['spread']:.1f} bps "
+                           f"({outlier['secteur']}, {outlier['rating']})")
+                else:
+                    st.success(f"🟢 **{outlier['nom_obligation']}** - Spread très bas : {outlier['spread']:.1f} bps "
+                            f"({outlier['secteur']}, {outlier['rating']})")
+
+# CSS supplémentaire pour les métriques
+st.markdown("""
+<style>
+    [data-testid="metric-container"] {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        padding: 1rem;
+        border-radius: 8px;
+        border-left: 4px solid #2a5298;
+    }
+    
+    [data-testid="metric-container"] > div {
+        width: fit-content;
+    }
+    
+    [data-testid="metric-container"] > div > div {
+        width: fit-content;
+    }
+    
+    .stExpander {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+    
+    .stTabs [data-baseweb="tab-panel"] {
+        padding-top: 2rem;
+    }
+</style>
+""", unsafe_allow_html=True)
