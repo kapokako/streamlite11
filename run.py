@@ -349,20 +349,32 @@ with tab2:
             # Scatter plot amélioré
             grp = df_f.groupby(['secteur','fourchette_annee','rating_num'], as_index=False)['spread'].mean()
             if len(grp) > 0:
-                grp['bucket'] = pd.Categorical(grp['fourchette_annee']).codes
+                # Nettoyer les données groupées
+                grp = grp.dropna()
                 
-                fig2 = px.scatter(
-                    grp, 
-                    x='bucket', 
-                    y='rating_num', 
-                    size='spread',
-                    color='secteur',
-                    hover_data={'spread': ':.1f'},
-                    title="Relation Rating-Échéance-Spread",
-                    labels={'bucket':'Code Échéance','rating_num':'Rating (numérique)', 'spread': 'Spread (bps)'}
-                )
-                fig2.update_layout(height=400)
-                st.plotly_chart(fig2, use_container_width=True, key="tab2_fig2")
+                if len(grp) > 0:
+                    grp['bucket'] = pd.Categorical(grp['fourchette_annee']).codes
+                    
+                    # S'assurer que toutes les valeurs sont valides pour Plotly
+                    grp = grp[grp['spread'] > 0]  # Enlever les spreads <= 0 qui poseraient problème pour size
+                    
+                    if len(grp) > 0:
+                        fig2 = px.scatter(
+                            grp, 
+                            x='bucket', 
+                            y='rating_num', 
+                            size='spread',
+                            color='secteur',
+                            hover_data={'spread': ':.1f'},
+                            title="Relation Rating-Échéance-Spread",
+                            labels={'bucket':'Code Échéance','rating_num':'Rating (numérique)', 'spread': 'Spread (bps)'}
+                        )
+                        fig2.update_layout(height=400)
+                        st.plotly_chart(fig2, use_container_width=True, key="tab2_fig2")
+                    else:
+                        st.info("Pas assez de données valides pour le scatter plot")
+                else:
+                    st.info("Pas de données après nettoyage")
             else:
                 st.info("Pas assez de données pour le graphique de corrélation")
         
@@ -384,20 +396,32 @@ with tab2:
         st.markdown("### 🌐 Vue 3D Interactive")
         grp = df_f.groupby(['secteur','fourchette_annee','rating_num'], as_index=False)['spread'].mean()
         if len(grp) > 0:
-            grp['bucket'] = pd.Categorical(grp['fourchette_annee']).codes
+            # Nettoyer les données pour la vue 3D
+            grp = grp.dropna()
             
-            fig3 = px.scatter_3d(
-                grp, 
-                x='rating_num', 
-                y='bucket', 
-                z='spread', 
-                color='secteur',
-                size='spread',
-                title="Vue 3D : Rating × Échéance × Spread",
-                labels={'rating_num':'Rating','bucket':'Échéance','spread':'Spread (bps)'}
-            )
-            fig3.update_layout(height=600)
-            st.plotly_chart(fig3, use_container_width=True, key="tab2_fig3")
+            if len(grp) > 0:
+                grp['bucket'] = pd.Categorical(grp['fourchette_annee']).codes
+                
+                # S'assurer que toutes les valeurs sont valides
+                grp = grp[grp['spread'] > 0]
+                
+                if len(grp) > 0:
+                    fig3 = px.scatter_3d(
+                        grp, 
+                        x='rating_num', 
+                        y='bucket', 
+                        z='spread', 
+                        color='secteur',
+                        size='spread',
+                        title="Vue 3D : Rating × Échéance × Spread",
+                        labels={'rating_num':'Rating','bucket':'Échéance','spread':'Spread (bps)'}
+                    )
+                    fig3.update_layout(height=600)
+                    st.plotly_chart(fig3, use_container_width=True, key="tab2_fig3")
+                else:
+                    st.info("Pas de données valides après nettoyage pour la vue 3D")
+            else:
+                st.info("Pas de données après nettoyage pour la vue 3D")
         else:
             st.info("Pas assez de données pour la vue 3D")
     
