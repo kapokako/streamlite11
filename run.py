@@ -672,16 +672,20 @@ with tab4:
     
     with col_e2:
         # Export Excel
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-            db_filtered.to_excel(writer, sheet_name='Bond_Spreads', index=False)
-        
-        st.download_button(
-            label="📊 Télécharger en Excel",
-            data=buffer.getvalue(),
-            file_name=f"bond_spreads_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        try:
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                db_filtered.to_excel(writer, sheet_name='Bond_Spreads', index=False)
+            
+            st.download_button(
+                label="📊 Télécharger en Excel",
+                data=buffer.getvalue(),
+                file_name=f"bond_spreads_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        except ImportError:
+            st.warning("⚠️ Export Excel indisponible. Utilisez l'export CSV.")
+            st.info("💡 Pour activer l'export Excel, installez : `pip install openpyxl`")
 
 # Footer avec informations système
 st.markdown("---")
