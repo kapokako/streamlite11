@@ -67,7 +67,6 @@ with tab1:
         st.subheader("⭐ Spreads par Rating")
         
         # Graphique en barres pour les ratings
-        # Trier par rating_num pour avoir un ordre logique
         rating_data = spread_by_rating.copy()
         rating_data['rating_num'] = rating_data.index.map(alpha_to_num)
         rating_data = rating_data.sort_values('rating_num', ascending=False)
@@ -81,7 +80,7 @@ with tab1:
             color_continuous_scale='RdYlBu_r'
         )
         fig_rating.update_layout(height=400, showlegend=False)
-        st.plotly_chart(fig_rating, use_container_width=True,key="tab1_fig_rating")
+        st.plotly_chart(fig_rating, use_container_width=True, key="tab1_fig_rating")
         
         # Graphique linéaire montrant la courbe de spread par rating
         fig_curve = px.line(
@@ -92,7 +91,7 @@ with tab1:
             markers=True
         )
         fig_curve.update_layout(height=400)
-        st.plotly_chart(fig_curve, use_container_width=True,key="tab1_fig_curve")
+        st.plotly_chart(fig_curve, use_container_width=True, key="tab1_fig_curve")
     
     st.subheader("📅 Spreads par Échéance")
     
@@ -109,7 +108,114 @@ with tab1:
             color_continuous_scale='viridis'
         )
         fig_maturity.update_layout(height=400, showlegend=False)
-        st.plotly_chart(fig_maturity, use_container_width=True,key="tab1_fig_maturity")
+        st.plotly_chart(fig_maturity, use_container_width=True, key="tab1_fig_maturity")
+    
+    with col4:
+        # Violin plot pour montrer la distribution par échéance
+        fig_violin = px.violin(df, x='fourchette_annee', y='spread', 
+                              title="Distribution des Spreads par Échéance",
+                              box=True)
+        fig_violin.update_layout(height=400)
+        st.plotly_chart(fig_violin, use_container_width=True, key="tab1_fig_violin")
+    
+    st.subheader("🎯 Analyse Multidimensionnelle")
+    
+    # Heatmap croisée Rating vs Échéance
+    pivot_heatmap = df.pivot_table(
+        index='rating', 
+        columns='fourchette_annee', 
+        values='spread', 
+        aggfunc='mean'
+    )
+    
+    # Réordonner les ratings
+    rating_order = sorted(pivot_heatmap.index, key=lambda x: alpha_to_num[x], reverse=True)
+    pivot_heatmap = pivot_heatmap.reindex(rating_order)
+    
+    fig_heatmap = px.imshow(
+        pivot_heatmap.values,
+        x=pivot_heatmap.columns,
+        y=pivot_heatmap.index,
+        title="Heatmap des Spreads : Rating vs Échéance",
+        labels={'x': 'Échéance', 'y': 'Rating', 'color': 'Spread Moyen (bps)'},
+        color_continuous_scale='RdYlBu_r',
+        aspect='auto'
+    )
+    fig_heatmap.update_layout(height=500)
+    st.plotly_chart(fig_heatmap, use_container_width=True, key="tab1_fig_heatmap")
+    
+    # Graphique radar par secteur
+    st.subheader("🕸️ Profil Radar des Secteurs")
+    
+    # Calculer les moyennes par secteur et rating
+    sector_rating = df.groupby(['secteur', 'rating'])['spread'].mean().unstack(fill_value=0)
+    
+    # Sélectionner quelques ratings clés pour le radar
+    key_ratings = ['AAA', 'AA', 'A', 'BBB', 'BB', 'B']
+    available_ratings = [r for r in key_ratings if r in sector_rating.columns]
+    
+    if available_ratings:
+        fig_radar = go.Figure()
+        
+        for sector in sector_rating.index[:5]:  # Limiter à 5 secteurs pour la lisibilité
+            fig_radar.add_trace(go.Scatterpolar(
+                r=sector_rating.loc[sector, available_ratings],
+                theta=available_ratings,
+                fill='toself',
+                name=sector
+            ))
+        
+        fig_radar.update_layout(
+            polar=dict(
+                radialaxis=dict(
+                    visible=True,
+                    range=[0, sector_rating[available_ratings].max().max()]
+                )),
+            showlegend=True,
+            title="Profil des Spreads par Secteur et Rating"
+        )
+        st.plotly_chart(fig_radar, use_container_width=True, key="tab1_fig_radar")
+    
+    # Tableaux de synthèse
+    st.subheader("📊 Tableaux de Synthèse")
+    
+    col5, col6, col7 = st.columns(3)
+    
+    with col5:
+        st.markdown("**Top 5 Secteurs - Spreads les plus élevés**")
+        top_sectors = spread_by_sector.sort_values('mean', ascending=False).head()
+        st.dataframe(top_sectors[['mean', 'count']])
+    
+    with col6:
+        st.markdown("**Ratings - Vue d'ensemble**")
+        rating_summary = spread_by_rating.sort_values('mean', ascending=False)
+        st.dataframe(rating_summary[['mean', 'count']])
+    
+    with col7:
+        st.markdown("**Échéances - Vue d'ensemble**")
+        maturity_summary = spread_by_maturity.sort_values('mean', ascending=False)
+        st.dataframe(maturity_summary[['mean', 'count']])
+    
+    # Insights automatiques
+    st.subheader("💡 Points Clés")
+    
+    max_spread_sector = spread_by_sector['mean'].idxmax()
+    min_spread_sector = spread_by_sector['mean'].idxmin()
+    max_spread_rating = spread_by_rating['mean'].idxmax()
+    min_spread_rating = spread_by_rating['mean'].idxmin()
+    
+    insights = f"""
+    **Observations principales :**
+    
+    • **Secteur le plus risqué** : {max_spread_sector} ({spread_by_sector.loc[max_spread_sector, 'mean']:.0f} bps en moyenne)
+    • **Secteur le moins risqué** : {min_spread_sector} ({spread_by_sector.loc[min_spread_sector, 'mean']:.0f} bps en moyenne)
+    • **Rating le plus pénalisé** : {max_spread_rating} ({spread_by_rating.loc[max_spread_rating, 'mean']:.0f} bps en moyenne)
+    • **Rating le mieux traité** : {min_spread_rating} ({spread_by_rating.loc[min_spread_rating, 'mean']:.0f} bps en moyenne)
+    • **Nombre total d'obligations** : {len(df):,}
+    • **Spread moyen global** : {df['spread'].mean():.0f} bps
+    """
+    
+    st.markdown(insights)
 
 with tab2:
     st.markdown("## 📈 Graphiques Interactifs")
@@ -142,9 +248,14 @@ with tab2:
     # Metrics en haut
     col_m1, col_m2, col_m3, col_m4 = st.columns(4)
     col_m1.metric("📊 Obligations sélectionnées", f"{len(df_f):,}")
-    col_m2.metric("📈 Spread moyen", f"{df_f['spread'].mean():.0f} bps")
-    col_m3.metric("📉 Spread médian", f"{df_f['spread'].median():.0f} bps")
-    col_m4.metric("📏 Écart-type", f"{df_f['spread'].std():.0f} bps")
+    if len(df_f) > 0:
+        col_m2.metric("📈 Spread moyen", f"{df_f['spread'].mean():.0f} bps")
+        col_m3.metric("📉 Spread médian", f"{df_f['spread'].median():.0f} bps")
+        col_m4.metric("📏 Écart-type", f"{df_f['spread'].std():.0f} bps")
+    else:
+        col_m2.metric("📈 Spread moyen", "N/A")
+        col_m3.metric("📉 Spread médian", "N/A")
+        col_m4.metric("📏 Écart-type", "N/A")
     
     st.markdown("---")
     
@@ -165,7 +276,7 @@ with tab2:
                 color_continuous_scale='RdYlBu_r'
             )
             fig1.update_layout(height=450)
-            st.plotly_chart(fig1, use_container_width=True,key="tab1_fig1")
+            st.plotly_chart(fig1, use_container_width=True, key="tab2_fig1")
         
         with col_g2:
             st.markdown("### 📊 Histogramme des Spreads")
@@ -178,7 +289,7 @@ with tab2:
                 marginal="rug"
             )
             fig_hist.update_layout(height=450)
-            st.plotly_chart(fig_hist, use_container_width=True,key="tab1_fig_hist")
+            st.plotly_chart(fig_hist, use_container_width=True, key="tab2_fig_hist")
         
         st.markdown("### 🎯 Graphiques de Corrélation")
         col_g3, col_g4 = st.columns(2)
@@ -186,49 +297,58 @@ with tab2:
         with col_g3:
             # Scatter plot amélioré
             grp = df_f.groupby(['secteur','fourchette_annee','rating_num'], as_index=False)['spread'].mean()
-            grp['bucket'] = grp['fourchette_annee'].astype('category').cat.codes
-            
-            fig2 = px.scatter(
-                grp, 
-                x='bucket', 
-                y='rating_num', 
-                size='spread',
-                color='secteur',
-                hover_data={'spread': ':.1f'},
-                title="Relation Rating-Échéance-Spread",
-                labels={'bucket':'Code Échéance','rating_num':'Rating (numérique)', 'spread': 'Spread (bps)'}
-            )
-            fig2.update_layout(height=400)
-            st.plotly_chart(fig2, use_container_width=True,key="tab1_fig2")
+            if len(grp) > 0:
+                grp['bucket'] = grp['fourchette_annee'].astype('category').cat.codes
+                
+                fig2 = px.scatter(
+                    grp, 
+                    x='bucket', 
+                    y='rating_num', 
+                    size='spread',
+                    color='secteur',
+                    hover_data={'spread': ':.1f'},
+                    title="Relation Rating-Échéance-Spread",
+                    labels={'bucket':'Code Échéance','rating_num':'Rating (numérique)', 'spread': 'Spread (bps)'}
+                )
+                fig2.update_layout(height=400)
+                st.plotly_chart(fig2, use_container_width=True, key="tab2_fig2")
+            else:
+                st.info("Pas assez de données pour le graphique de corrélation")
         
         with col_g4:
             # Sunburst chart
             if len(df_f) > 0:
-                fig_sun = px.sunburst(
-                    df_f,
-                    path=['secteur', 'fourchette_annee', 'rating'],
-                    values='spread',
-                    title="Répartition Hiérarchique des Spreads"
-                )
-                fig_sun.update_layout(height=400)
-                st.plotly_chart(fig_sun, use_container_width=True,key="tab1_fig_sun")
+                try:
+                    fig_sun = px.sunburst(
+                        df_f,
+                        path=['secteur', 'fourchette_annee', 'rating'],
+                        values='spread',
+                        title="Répartition Hiérarchique des Spreads"
+                    )
+                    fig_sun.update_layout(height=400)
+                    st.plotly_chart(fig_sun, use_container_width=True, key="tab2_fig_sun")
+                except:
+                    st.info("Graphique sunburst indisponible avec ces filtres")
         
         st.markdown("### 🌐 Vue 3D Interactive")
         grp = df_f.groupby(['secteur','fourchette_annee','rating_num'], as_index=False)['spread'].mean()
-        grp['bucket'] = grp['fourchette_annee'].astype('category').cat.codes
-        
-        fig3 = px.scatter_3d(
-            grp, 
-            x='rating_num', 
-            y='bucket', 
-            z='spread', 
-            color='secteur',
-            size='spread',
-            title="Vue 3D : Rating × Échéance × Spread",
-            labels={'rating_num':'Rating','bucket':'Échéance','spread':'Spread (bps)'}
-        )
-        fig3.update_layout(height=600)
-        st.plotly_chart(fig3, use_container_width=True,key="tab1_fig3")
+        if len(grp) > 0:
+            grp['bucket'] = grp['fourchette_annee'].astype('category').cat.codes
+            
+            fig3 = px.scatter_3d(
+                grp, 
+                x='rating_num', 
+                y='bucket', 
+                z='spread', 
+                color='secteur',
+                size='spread',
+                title="Vue 3D : Rating × Échéance × Spread",
+                labels={'rating_num':'Rating','bucket':'Échéance','spread':'Spread (bps)'}
+            )
+            fig3.update_layout(height=600)
+            st.plotly_chart(fig3, use_container_width=True, key="tab2_fig3")
+        else:
+            st.info("Pas assez de données pour la vue 3D")
     
     else:
         st.warning("⚠️ Aucune donnée ne correspond aux filtres sélectionnés")
@@ -366,7 +486,7 @@ with tab4:
             
             if len(sub) > 1:
                 fig_detail = px.histogram(sub, x='spread', title=f"Distribution - {ss} | {se} | {sr}")
-                st.plotly_chart(fig_detail, use_container_width=True,key="tab1_fig_detail")
+                st.plotly_chart(fig_detail, use_container_width=True, key="tab4_fig_detail")
         else:
             st.warning("❌ Aucune donnée exacte trouvée")
             st.markdown("**Suggestions alternatives :**")
@@ -374,6 +494,7 @@ with tab4:
             # Recherche par secteur et échéance
             temp = df[(df['secteur']==ss)&(df['fourchette_annee']==se)]
             if not temp.empty:
+                temp = temp.copy()
                 temp['diff'] = abs(temp['rating_num'] - alpha_to_num[sr])
                 closest = temp.nsmallest(5, 'diff')
                 
@@ -382,7 +503,7 @@ with tab4:
                 
                 fig_alt = px.bar(closest, x='rating', y='spread', 
                                title=f"Spreads alternatifs - {ss} | {se}")
-                st.plotly_chart(fig_alt, use_container_width=True,key="tab1_fig_alt")
+                st.plotly_chart(fig_alt, use_container_width=True, key="tab4_fig_alt")
     
     elif search_mode == "🔍 Recherche Approximative":
         st.markdown("### Recherche par fourchettes")
@@ -421,13 +542,13 @@ with tab4:
                 fig_sector_approx = px.box(approx_results, x='secteur', y='spread', 
                                          title="Distribution par secteur")
                 fig_sector_approx.update_xaxes(tickangle=45)
-                st.plotly_chart(fig_sector_approx, use_container_width=True,key="tab1_fig_sector_approx")
+                st.plotly_chart(fig_sector_approx, use_container_width=True, key="tab4_fig_sector_approx")
             
             with col_g2:
                 fig_rating_approx = px.box(approx_results, x='rating', y='spread', 
                                          title="Distribution par rating")
                 fig_rating_approx.update_xaxes(tickangle=45)
-                st.plotly_chart(fig_rating_approx, use_container_width=True,key="tab1_fig_rating_approx")
+                st.plotly_chart(fig_rating_approx, use_container_width=True, key="tab4_fig_rating_approx")
             
             # Table des résultats
             st.dataframe(approx_results.sample(min(20, len(approx_results))), use_container_width=True)
@@ -505,132 +626,7 @@ with tab4:
                         title="Comparaison des Spreads Moyens",
                         color='Profil'
                     )
-                    st.plotly_chart(fig_comp, use_container_width=True,key="tab2_fig_comp")
-
-            labels={'x': 'Spread Moyen (bps)', 'y': 'Secteur'},
-
-            color=spread_by_sector['mean'],
-            color_continuous_scale='RdYlBu_r'
-        
-        fig_sector.update_layout(height=400, showlegend=False)
-        st.plotly_chart(fig_sector, use_container_width=True,key="tab1_fig_sector")
-        
-        # Box plot pour la distribution par secteur
-        fig_box_sector = px.box(df, x='secteur', y='spread', title="Distribution des Spreads par Secteur")
-        fig_box_sector.update_xaxes(tickangle=45)
-        fig_box_sector.update_layout(height=400)
-        st.plotly_chart(fig_box_sector, use_container_width=True,key="tab2_fig_box_sector")
-    
-   
-    
-  
-    
-    with col4:
-        # Violin plot pour montrer la distribution par échéance
-        fig_violin = px.violin(df, x='fourchette_annee', y='spread', 
-                              title="Distribution des Spreads par Échéance",
-                              box=True)
-        fig_violin.update_layout(height=400)
-        st.plotly_chart(fig_violin, use_container_width=True,key="tab1_fig_violin")
-    
-    st.subheader("🎯 Analyse Multidimensionnelle")
-    
-    # Heatmap croisée Rating vs Échéance
-    pivot_heatmap = df.pivot_table(
-        index='rating', 
-        columns='fourchette_annee', 
-        values='spread', 
-        aggfunc='mean'
-    )
-    
-    # Réordonner les ratings
-    rating_order = sorted(pivot_heatmap.index, key=lambda x: alpha_to_num[x], reverse=True)
-    pivot_heatmap = pivot_heatmap.reindex(rating_order)
-    
-    fig_heatmap = px.imshow(
-        pivot_heatmap.values,
-        x=pivot_heatmap.columns,
-        y=pivot_heatmap.index,
-        title="Heatmap des Spreads : Rating vs Échéance",
-        labels={'x': 'Échéance', 'y': 'Rating', 'color': 'Spread Moyen (bps)'},
-        color_continuous_scale='RdYlBu_r',
-        aspect='auto'
-    )
-    fig_heatmap.update_layout(height=500)
-    st.plotly_chart(fig_heatmap, use_container_width=True,key="tab3_fig_heatmap")
-    
-    # Graphique radar par secteur
-    st.subheader("🕸️ Profil Radar des Secteurs")
-    
-    # Calculer les moyennes par secteur et rating
-    sector_rating = df.groupby(['secteur', 'rating'])['spread'].mean().unstack(fill_value=0)
-    
-    # Sélectionner quelques ratings clés pour le radar
-    key_ratings = ['AAA', 'AA', 'A', 'BBB', 'BB', 'B']
-    available_ratings = [r for r in key_ratings if r in sector_rating.columns]
-    
-    if available_ratings:
-        fig_radar = go.Figure()
-        
-        for sector in sector_rating.index[:5]:  # Limiter à 5 secteurs pour la lisibilité
-            fig_radar.add_trace(go.Scatterpolar(
-                r=sector_rating.loc[sector, available_ratings],
-                theta=available_ratings,
-                fill='toself',
-                name=sector
-            ))
-        
-        fig_radar.update_layout(
-            polar=dict(
-                radialaxis=dict(
-                    visible=True,
-                    range=[0, sector_rating[available_ratings].max().max()]
-                )),
-            showlegend=True,
-            title="Profil des Spreads par Secteur et Rating"
-        )
-        st.plotly_chart(fig_radar, use_container_width=True)
-    
-    # Tableaux de synthèse
-    st.subheader("📊 Tableaux de Synthèse")
-    
-    col5, col6, col7 = st.columns(3)
-    
-    with col5:
-        st.markdown("**Top 5 Secteurs - Spreads les plus élevés**")
-        top_sectors = spread_by_sector.sort_values('mean', ascending=False).head()
-        st.dataframe(top_sectors[['mean', 'count']])
-    
-    with col6:
-        st.markdown("**Ratings - Vue d'ensemble**")
-        rating_summary = spread_by_rating.sort_values('mean', ascending=False)
-        st.dataframe(rating_summary[['mean', 'count']])
-    
-    with col7:
-        st.markdown("**Échéances - Vue d'ensemble**")
-        maturity_summary = spread_by_maturity.sort_values('mean', ascending=False)
-        st.dataframe(maturity_summary[['mean', 'count']])
-    
-    # Insights automatiques
-    st.subheader("💡 Points Clés")
-    
-    max_spread_sector = spread_by_sector['mean'].idxmax()
-    min_spread_sector = spread_by_sector['mean'].idxmin()
-    max_spread_rating = spread_by_rating['mean'].idxmax()
-    min_spread_rating = spread_by_rating['mean'].idxmin()
-    
-    insights = f"""
-    **Observations principales :**
-    
-    • **Secteur le plus risqué** : {max_spread_sector} ({spread_by_sector.loc[max_spread_sector, 'mean']:.0f} bps en moyenne)
-    • **Secteur le moins risqué** : {min_spread_sector} ({spread_by_sector.loc[min_spread_sector, 'mean']:.0f} bps en moyenne)
-    • **Rating le plus pénalisé** : {max_spread_rating} ({spread_by_rating.loc[max_spread_rating, 'mean']:.0f} bps en moyenne)
-    • **Rating le mieux traité** : {min_spread_rating} ({spread_by_rating.loc[min_spread_rating, 'mean']:.0f} bps en moyenne)
-    • **Nombre total d'obligations** : {len(df):,}
-    • **Spread moyen global** : {df['spread'].mean():.0f} bps
-    """
-    
-    st.markdown(insights)
+                    st.plotly_chart(fig_comp, use_container_width=True, key="tab4_fig_comp")
 
 st.markdown("---")
 st.markdown("*App Streamlit - analyse des spreads obligataires.*")
