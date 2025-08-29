@@ -8,7 +8,7 @@ import io
 
 # Configuration de la page
 st.set_page_config(
-    page_title="Bond Spread Analytics Pro", 
+    page_title="Bond Spread Analytics", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
